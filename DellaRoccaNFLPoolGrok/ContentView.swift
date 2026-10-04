@@ -1,13 +1,20 @@
 import SwiftUI
 import Playgrounds
+import FirebaseCore
 
-@main struct MyApp: App {
+@main
+struct MyApp: App {
+    init() {
+        FirebaseApp.configure()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
     }
 }
+
 
 struct ContentView: View {
     private let pool = SurvivorPoolLoader.load()
@@ -25,6 +32,8 @@ struct ContentView: View {
         }
     }
 }
+
+
 
 private struct TeamListView: View {
     var body: some View {
