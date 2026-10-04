@@ -1,0 +1,63 @@
+rules_version = '2';
+
+// Clients can read the pool. Pins live in entryPins and are not readable here.
+// Writes go through Cloud Functions (Admin SDK), which bypass these rules.
+// Ralph Della Rocca and Will Castellano get the admin custom claim.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    match /pool/{seasonId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /teams/{abbreviation} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /games/{gameId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /entries/{entryId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+
+      // Future picks stay private until that game kicks off.
+      // Week 1–3 results are public because those games are final.
+      match /privatePicks/{week} {
+        allow read: if isAdmin()
+          || (signedIn() && get(/databases/$(database)/documents/entries/$(entryId)).data.playerId == request.auth.uid);
+        allow write: if isAdmin();
+      }
+    }
+
+    match /entryPins/{pin} {
+      allow read, write: if isAdmin();
+    }
+
+    match /players/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.isAdmin == false;
+      allow update: if isAdmin()
+        || (signedIn()
+            && request.auth.uid == userId
+            && request.resource.data.isAdmin == resource.data.isAdmin);
+    }
+
+    match /claimAttempts/{userId} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -10,6 +10,23 @@ import Playgrounds
 }
 
 struct ContentView: View {
+    private let pool = SurvivorPoolLoader.load()
+
+    var body: some View {
+        TabView {
+            PoolBoardView(pool: pool)
+                .tabItem {
+                    Label("Pool", systemImage: "list.bullet")
+                }
+            TeamListView()
+                .tabItem {
+                    Label("Teams", systemImage: "paintpalette")
+                }
+        }
+    }
+}
+
+private struct TeamListView: View {
     var body: some View {
         NavigationStack {
             List(NFLTeam.all) { team in
@@ -66,5 +83,4 @@ private struct TeamColorsRow: View {
 
 #Playground {
     _ = 1 + 2
-    
 }
