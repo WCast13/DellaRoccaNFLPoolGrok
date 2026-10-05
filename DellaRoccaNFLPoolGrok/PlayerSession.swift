@@ -27,6 +27,17 @@ struct PoolGame: Identifiable, Hashable, Sendable {
     }
 }
 
+struct CloseWeekReport: Hashable, Sendable {
+    var week: Int
+    var missingPicks: Int
+    var losses: Int
+    var wins: Int
+    var ungraded: Int
+    var updated: Int
+    var applied: Bool
+    var examples: [String]
+}
+
 struct ClaimedEntry: Identifiable, Hashable, Sendable {
     var id: String
     var label: String
@@ -35,6 +46,7 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
     var buybackDeclined: Bool
     var picks: [Int: String]
     var usedTeams: [String: Int]
+    var isClaimed: Bool
 
     var statusLine: String {
         switch status {
@@ -64,11 +76,15 @@ final class PlayerSession {
     var errorMessage: String?
     var notice: String?
     var isBusy = false
+    var isAdmin = false
+    var roster: [ClaimedEntry] = []
 
     private let functions = Functions.functions(region: "us-east4")
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var entryListener: ListenerRegistration?
     private var gameListener: ListenerRegistration?
+    private var rosterListener: ListenerRegistration?
+    private var commissionerPickListener: ListenerRegistration?
     private var privateListeners: [ListenerRegistration] = []
     private var currentNonce: String?
 
@@ -148,7 +164,7 @@ final class PlayerSession {
         }
     }
 
-    func submitPick(entryID: String, week: Int, team: String) async {
+    func submitPick(entryID: String, week: Int, team: String, confirmation: String? = nil) async {
         isBusy = true
         defer { isBusy = false }
         do {
@@ -157,7 +173,7 @@ final class PlayerSession {
                 "week": week,
                 "team": team,
             ])
-            notice = "Week \(week) pick saved. You can change it until kickoff."
+            notice = confirmation ?? "Week \(week) pick saved. You can change it until kickoff."
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -206,6 +222,12 @@ final class PlayerSession {
             entries = []
             games = []
             privatePicks = [:]
+            isAdmin = false
+            roster = []
+            rosterListener?.remove()
+            rosterListener = nil
+            commissionerPickListener?.remove()
+            commissionerPickListener = nil
             return
         }
 
@@ -232,6 +254,130 @@ final class PlayerSession {
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
                     self.games = parsed
+                }
+            }
+        Task { await refreshAccess() }
+    }
+
+    func refreshAccess() async {
+        guard let user = Auth.auth().currentUser else {
+            isAdmin = false
+            watchRoster()
+            return
+        }
+        do {
+            let result = try await functions.httpsCallable("syncCommissionerClaim").call([:])
+            let granted = (result.data as? [String: Any])?["admin"] as? Bool == true
+            if granted {
+                _ = try await user.getIDTokenResult(forcingRefresh: true)
+            }
+            let token = try await user.getIDTokenResult()
+            isAdmin = granted || token.claims["admin"] as? Bool == true
+        } catch {
+            let token = try? await user.getIDTokenResult()
+            isAdmin = token?.claims["admin"] as? Bool == true
+        }
+        watchRoster()
+    }
+
+    func watchCommissionerEntry(_ entryID: String?) {
+        commissionerPickListener?.remove()
+        commissionerPickListener = nil
+        guard isAdmin, let entryID else { return }
+        commissionerPickListener = Firestore.firestore()
+            .collection("entries")
+            .document(entryID)
+            .collection("privatePicks")
+            .addSnapshotListener { snapshot, error in
+                var weekPicks: [Int: String] = [:]
+                for document in snapshot?.documents ?? [] {
+                    let data = document.data()
+                    let week = data["week"] as? Int ?? Int(document.documentID)
+                    if let week, let team = data["team"] as? String {
+                        weekPicks[week] = team
+                    }
+                }
+                let failure = error?.localizedDescription
+                Task { @MainActor in
+                    if let failure { self.errorMessage = failure }
+                    self.privatePicks[entryID] = weekPicks
+                }
+            }
+    }
+
+    func recordBuyback(entryID: String) async {
+        await callCommissioner("recordBuyback", ["entryId": entryID], success: "Buyback recorded. Used teams stay used.")
+    }
+
+    func declineBuyback(entryID: String) async {
+        await callCommissioner("declineBuyback", ["entryId": entryID], success: "Buyback declined. This entry is out.")
+    }
+
+    func closeWeek(week: Int, apply: Bool) async -> CloseWeekReport? {
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let result = try await functions.httpsCallable("closeWeek").call([
+                "week": week,
+                "apply": apply,
+            ])
+            let data = result.data as? [String: Any] ?? [:]
+            let report = CloseWeekReport(
+                week: integer(data["week"]) ?? week,
+                missingPicks: integer(data["missingPicks"]) ?? 0,
+                losses: integer(data["losses"]) ?? 0,
+                wins: integer(data["wins"]) ?? 0,
+                ungraded: integer(data["ungraded"]) ?? 0,
+                updated: integer(data["updated"]) ?? 0,
+                applied: data["applied"] as? Bool ?? apply,
+                examples: data["examples"] as? [String] ?? []
+            )
+            notice = apply
+                ? "Week \(week) closed. \(report.updated) entries updated."
+                : "Week \(week) preview: \(report.missingPicks) missing picks, \(report.losses) losses, \(report.wins) wins."
+            errorMessage = nil
+            return report
+        } catch {
+            errorMessage = error.localizedDescription
+            notice = nil
+            return nil
+        }
+    }
+
+    func addCommissionerEmail(_ email: String) async {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        await callCommissioner("addCommissionerEmail", ["email": trimmed], success: "\(trimmed) can become a commissioner after signing in.")
+    }
+
+    private func callCommissioner(_ name: String, _ data: [String: Any], success: String) async {
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            _ = try await functions.httpsCallable(name).call(data)
+            notice = success
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            notice = nil
+        }
+    }
+
+    private func watchRoster() {
+        rosterListener?.remove()
+        rosterListener = nil
+        guard isAdmin else {
+            roster = []
+            return
+        }
+        rosterListener = Firestore.firestore().collection("entries")
+            .addSnapshotListener { snapshot, error in
+                let parsed = snapshot?.documents.compactMap(ClaimedEntry.init(document:)) ?? []
+                let failure = error?.localizedDescription
+                Task { @MainActor in
+                    if let failure { self.errorMessage = failure }
+                    self.roster = parsed.sorted {
+                        $0.label.localizedStandardCompare($1.label) == .orderedAscending
+                    }
                 }
             }
     }
@@ -302,6 +448,8 @@ private extension ClaimedEntry {
         self.buybackDeclined = data["buybackDeclined"] as? Bool ?? false
         self.picks = Self.weekTeams(data["picks"])
         self.usedTeams = Self.teamWeeks(data["usedTeams"])
+        let owner = data["playerId"] as? String
+        self.isClaimed = owner?.isEmpty == false
     }
 
     static func weekTeams(_ value: Any?) -> [Int: String] {

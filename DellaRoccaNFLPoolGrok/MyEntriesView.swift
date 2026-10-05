@@ -1,25 +1,14 @@
 import AuthenticationServices
-import FirebaseCore
 import SwiftUI
 
 struct MyEntriesView: View {
-    @State private var session: PlayerSession?
+    var session: PlayerSession?
 
     var body: some View {
-        Group {
-            if let session {
-                MyEntriesContent(session: session)
-            } else {
-                ProgressView("Opening the pool")
-            }
-        }
-        .task {
-            if FirebaseApp.app() == nil {
-                FirebaseApp.configure()
-            }
-            if session == nil {
-                session = PlayerSession()
-            }
+        if let session {
+            MyEntriesContent(session: session)
+        } else {
+            ProgressView("Opening the pool")
         }
     }
 }
@@ -300,7 +289,7 @@ private struct MyEntriesContent: View {
     }
 }
 
-private struct TeamPickChip: View {
+struct TeamPickChip: View {
     let abbreviation: String
     let selected: Bool
     let dimmed: Bool

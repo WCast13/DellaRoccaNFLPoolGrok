@@ -1,12 +1,16 @@
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore, type DocumentData } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { closePoolWeek } from "./close";
 import { gradeImportedWeeks } from "./grade";
 import { publishLockedPicks } from "./picks";
 import { runSeasonSync } from "./sports";
+
+const BOOTSTRAP_COMMISSIONER_EMAILS = ["wcastellano13@gmail.com"];
 
 const apiSportsKey = defineSecret("APISPORTS_KEY");
 const oddsApiKey = defineSecret("ODDS_API_KEY");
@@ -262,6 +266,65 @@ export const gradeWeeks = onCall(async (request) => {
   requireAdmin(auth);
   const apply = request.data?.apply !== false;
   return gradeImportedWeeks(apply);
+});
+
+async function commissionerEmails(): Promise<Set<string>> {
+  const allowed = new Set(BOOTSTRAP_COMMISSIONER_EMAILS.map((email) => email.toLowerCase()));
+  const pool = await db.collection("pool").doc("2026").get();
+  const extra = pool.get("commissionerEmails");
+  if (Array.isArray(extra)) {
+    for (const email of extra) {
+      if (typeof email === "string" && email.includes("@")) allowed.add(email.trim().toLowerCase());
+    }
+  }
+  return allowed;
+}
+
+export const syncCommissionerClaim = onCall(async (request) => {
+  const auth = requireUser(request.auth);
+  const email = String(auth.token.email ?? "").trim().toLowerCase();
+  const allowed = await commissionerEmails();
+  if (!email || !allowed.has(email)) {
+    return { admin: auth.token.admin === true };
+  }
+  if (auth.token.admin !== true) {
+    const user = await getAuth().getUser(auth.uid);
+    await getAuth().setCustomUserClaims(auth.uid, { ...(user.customClaims ?? {}), admin: true });
+  }
+  return { admin: true };
+});
+
+export const addCommissionerEmail = onCall(async (request) => {
+  const auth = requireUser(request.auth);
+  requireAdmin(auth);
+  const email = String(request.data?.email ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError("invalid-argument", "Enter an email address.");
+  }
+  const ref = db.collection("pool").doc("2026");
+  await db.runTransaction(async (tx) => {
+    const pool = await tx.get(ref);
+    const current = Array.isArray(pool.get("commissionerEmails")) ? pool.get("commissionerEmails") : [];
+    const emails = current.filter((item: unknown): item is string => typeof item === "string");
+    if (!emails.includes(email)) emails.push(email);
+    tx.set(ref, { commissionerEmails: emails }, { merge: true });
+  });
+  return { email };
+});
+
+export const closeWeek = onCall({ timeoutSeconds: 120 }, async (request) => {
+  const auth = requireUser(request.auth);
+  requireAdmin(auth);
+  const week = Number(request.data?.week);
+  if (!Number.isInteger(week) || week < 1 || week > 18) {
+    throw new HttpsError("invalid-argument", "Choose a week.");
+  }
+  try {
+    return await closePoolWeek(week, request.data?.apply === true);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not close that week.";
+    throw new HttpsError("failed-precondition", message);
+  }
 });
 
 export const declineBuyback = onCall(async (request) => {

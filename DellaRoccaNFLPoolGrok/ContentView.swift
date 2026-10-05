@@ -18,6 +18,7 @@ struct MyApp: App {
 
 struct ContentView: View {
     private let pool = SurvivorPoolLoader.load()
+    @State private var session: PlayerSession?
 
     var body: some View {
         TabView {
@@ -25,14 +26,23 @@ struct ContentView: View {
                 .tabItem {
                     Label("Pool", systemImage: "list.bullet")
                 }
-            MyEntriesView()
+            MyEntriesView(session: session)
                 .tabItem {
                     Label("My Entries", systemImage: "person.crop.circle")
+                }
+            CommissionerView(session: session)
+                .tabItem {
+                    Label("Commissioner", systemImage: "checkmark.shield")
                 }
             TeamListView()
                 .tabItem {
                     Label("Teams", systemImage: "paintpalette")
                 }
+        }
+        .task {
+            if session == nil {
+                session = PlayerSession()
+            }
         }
     }
 }
