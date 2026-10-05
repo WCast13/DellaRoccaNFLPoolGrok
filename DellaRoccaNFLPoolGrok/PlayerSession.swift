@@ -46,7 +46,21 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
     var buybackDeclined: Bool
     var picks: [Int: String]
     var usedTeams: [String: Int]
+    var buybackWeeks: [Int]
     var isClaimed: Bool
+
+    var canBuyBack: Bool {
+        status == .pendingBuyback
+            && !buybackDeclined
+            && (eliminatedWeek ?? 7) <= 6
+    }
+
+    /// Bought-back weeks and the week that currently has this entry out.
+    func resultLabel(for week: Int) -> String? {
+        if buybackWeeks.contains(week) { return "Bought back" }
+        if status != .active, eliminatedWeek == week { return "Loss" }
+        return nil
+    }
 
     var statusLine: String {
         switch status {
@@ -77,13 +91,20 @@ final class PlayerSession {
     var notice: String?
     var isBusy = false
     var isAdmin = false
-    var roster: [ClaimedEntry] = []
+    var standings: [ClaimedEntry] = []
+    var standingsLoaded = false
+    var teamLogos: [String: URL] = [:]
+    var privatePicksReady = false
+
+    var roster: [ClaimedEntry] { isAdmin ? standings : [] }
 
     private let functions = Functions.functions(region: "us-east4")
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var entryListener: ListenerRegistration?
     private var gameListener: ListenerRegistration?
-    private var rosterListener: ListenerRegistration?
+    private var standingsListener: ListenerRegistration?
+    private var teamListener: ListenerRegistration?
+    private var allPrivatePicksListener: ListenerRegistration?
     private var commissionerPickListener: ListenerRegistration?
     private var privateListeners: [ListenerRegistration] = []
     private var currentNonce: String?
@@ -222,10 +243,17 @@ final class PlayerSession {
             entries = []
             games = []
             privatePicks = [:]
+            standings = []
+            standingsLoaded = false
+            teamLogos = [:]
+            privatePicksReady = false
             isAdmin = false
-            roster = []
-            rosterListener?.remove()
-            rosterListener = nil
+            standingsListener?.remove()
+            standingsListener = nil
+            teamListener?.remove()
+            teamListener = nil
+            allPrivatePicksListener?.remove()
+            allPrivatePicksListener = nil
             commissionerPickListener?.remove()
             commissionerPickListener = nil
             return
@@ -256,13 +284,43 @@ final class PlayerSession {
                     self.games = parsed
                 }
             }
+        standingsListener?.remove()
+        standingsListener = Firestore.firestore().collection("entries")
+            .addSnapshotListener { snapshot, error in
+                let parsed = snapshot?.documents.compactMap(ClaimedEntry.init(document:)) ?? []
+                let failure = error?.localizedDescription
+                Task { @MainActor in
+                    if let failure { self.errorMessage = failure }
+                    self.standings = parsed.sorted {
+                        $0.label.localizedStandardCompare($1.label) == .orderedAscending
+                    }
+                    self.standingsLoaded = true
+                }
+            }
+
+        teamListener?.remove()
+        teamListener = Firestore.firestore().collection("teams")
+            .addSnapshotListener { snapshot, error in
+                var logos: [String: URL] = [:]
+                for document in snapshot?.documents ?? [] {
+                    if let raw = document.data()["logoUrl"] as? String, let url = URL(string: raw) {
+                        logos[document.documentID] = url
+                    }
+                }
+                let failure = error?.localizedDescription
+                Task { @MainActor in
+                    if let failure { self.errorMessage = failure }
+                    self.teamLogos = logos
+                }
+            }
         Task { await refreshAccess() }
     }
 
     func refreshAccess() async {
         guard let user = Auth.auth().currentUser else {
             isAdmin = false
-            watchRoster()
+            watchPrivatePicks()
+            watchAllPrivatePicks()
             return
         }
         do {
@@ -277,7 +335,8 @@ final class PlayerSession {
             let token = try? await user.getIDTokenResult()
             isAdmin = token?.claims["admin"] as? Bool == true
         }
-        watchRoster()
+        watchPrivatePicks()
+        watchAllPrivatePicks()
     }
 
     func watchCommissionerEntry(_ entryID: String?) {
@@ -362,28 +421,36 @@ final class PlayerSession {
         }
     }
 
-    private func watchRoster() {
-        rosterListener?.remove()
-        rosterListener = nil
+    private func watchAllPrivatePicks() {
+        allPrivatePicksListener?.remove()
+        allPrivatePicksListener = nil
         guard isAdmin else {
-            roster = []
+            privatePicksReady = false
             return
         }
-        rosterListener = Firestore.firestore().collection("entries")
+        privatePicksReady = false
+        allPrivatePicksListener = Firestore.firestore().collectionGroup("privatePicks")
             .addSnapshotListener { snapshot, error in
-                let parsed = snapshot?.documents.compactMap(ClaimedEntry.init(document:)) ?? []
+                var picksByEntry: [String: [Int: String]] = [:]
+                for document in snapshot?.documents ?? [] {
+                    guard let entryID = document.reference.parent.parent?.documentID else { continue }
+                    let data = document.data()
+                    let week = data["week"] as? Int ?? Int(document.documentID)
+                    guard let week, let team = data["team"] as? String else { continue }
+                    picksByEntry[entryID, default: [:]][week] = team
+                }
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
-                    self.roster = parsed.sorted {
-                        $0.label.localizedStandardCompare($1.label) == .orderedAscending
-                    }
+                    self.privatePicks = picksByEntry
+                    self.privatePicksReady = true
                 }
             }
     }
 
     private func watchPrivatePicks() {
         clearPrivateListeners()
+        guard !isAdmin else { return }
         let entryIDs = Set(entries.map(\.id))
         privatePicks = privatePicks.filter { entryIDs.contains($0.key) }
         for entry in entries {
@@ -448,8 +515,24 @@ private extension ClaimedEntry {
         self.buybackDeclined = data["buybackDeclined"] as? Bool ?? false
         self.picks = Self.weekTeams(data["picks"])
         self.usedTeams = Self.teamWeeks(data["usedTeams"])
+        self.buybackWeeks = Self.buybackWeeks(data["buybacks"])
         let owner = data["playerId"] as? String
         self.isClaimed = owner?.isEmpty == false
+    }
+
+    static func buybackWeeks(_ value: Any?) -> [Int] {
+        guard let rows = value as? [Any] else { return [] }
+        return rows.compactMap { row in
+            let map: [String: Any]?
+            if let typed = row as? [String: Any] {
+                map = typed
+            } else if let object = row as? NSDictionary {
+                map = object as? [String: Any]
+            } else {
+                map = nil
+            }
+            return integer(map?["eliminatedWeek"])
+        }
     }
 
     static func weekTeams(_ value: Any?) -> [Int: String] {

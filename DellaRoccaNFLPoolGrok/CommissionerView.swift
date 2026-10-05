@@ -19,6 +19,7 @@ private struct CommissionerContent: View {
     @State private var preview: CloseWeekReport?
     @State private var confirmClose = false
     @State private var commissionerEmail = ""
+    @State private var showNoLogin = false
 
     private var filtered: [ClaimedEntry] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -76,17 +77,53 @@ private struct CommissionerContent: View {
                 }
             }
 
-            Section("Entries") {
-                ForEach(filtered) { entry in
-                    NavigationLink {
-                        CommissionerEntryView(session: session, entryID: entry.id)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.label)
-                                .font(.body.weight(.semibold))
-                            Text(entrySubtitle(entry))
-                                .font(.caption)
+            if trimmedQuery.isEmpty {
+                queueSection(
+                    "No pick yet",
+                    rows: missingPicks,
+                    empty: session.openWeek.map { "Every alive entry has a week \($0) pick." }
+                        ?? "No week is open for picks.",
+                    checking: !session.privatePicksReady
+                )
+                queueSection(
+                    "Waiting on a buyback",
+                    rows: buybackEntries,
+                    empty: "Nobody is waiting on a buyback."
+                )
+                Section {
+                    if showNoLogin {
+                        if noLogin.isEmpty {
+                            Text("Every entry has a login.")
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(noLogin) { entry in
+                                entryLink(entry)
+                            }
+                        }
+                    }
+                } header: {
+                    Button {
+                        showNoLogin.toggle()
+                    } label: {
+                        HStack {
+                            Text("No login (\(noLogin.count))")
+                            Spacer()
+                            Image(systemName: showNoLogin ? "chevron.down" : "chevron.right")
+                                .font(.caption.weight(.semibold))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                Section("Matching entries") {
+                    if filtered.isEmpty {
+                        Text("No entry matches that name.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(filtered) { entry in
+                            entryLink(entry)
                         }
                     }
                 }
@@ -124,9 +161,68 @@ private struct CommissionerContent: View {
         }
     }
 
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var missingPicks: [ClaimedEntry] {
+        session.roster.filter { entry in
+            guard entry.status == .active, let openWeek = session.openWeek else { return false }
+            return session.picks(for: entry)[openWeek] == nil
+        }
+    }
+
+    private var buybackEntries: [ClaimedEntry] {
+        session.roster.filter { $0.status == .pendingBuyback }
+    }
+
+    private var noLogin: [ClaimedEntry] {
+        session.roster.filter { !$0.isClaimed }
+    }
+
+    @ViewBuilder
+    private func queueSection(_ title: String, rows: [ClaimedEntry], empty: String, checking: Bool = false) -> some View {
+        Section {
+            if checking {
+                ProgressView("Checking picks")
+            } else if rows.isEmpty {
+                Text(empty)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(rows) { entry in
+                    entryLink(entry)
+                }
+            }
+        } header: {
+            Text(checking ? title : "\(title) (\(rows.count))")
+        }
+    }
+
+    private func entryLink(_ entry: ClaimedEntry) -> some View {
+        NavigationLink {
+            CommissionerEntryView(session: session, entryID: entry.id)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.label)
+                    .font(.body.weight(.semibold))
+                Text(entrySubtitle(entry))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private func entrySubtitle(_ entry: ClaimedEntry) -> String {
-        let login = entry.isClaimed ? "Has a login" : "No login"
-        return "\(entry.statusLine) · \(login)"
+        var parts = [entry.statusLine, entry.isClaimed ? "Has a login" : "No login"]
+        if entry.status == .active, let openWeek = session.openWeek {
+            if let team = session.picks(for: entry)[openWeek] {
+                parts.append(NFLTeam.shortName(for: team))
+            } else {
+                parts.append("No pick")
+            }
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func message(_ text: String) -> some View {
@@ -200,8 +296,13 @@ private struct CommissionerEntryView: View {
                                         Text("W\(pickWeek)")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
-                                        TeamPickChip(abbreviation: team, selected: false, dimmed: false)
-                                            .frame(width: 64)
+                                        TeamPickChip(
+                                            abbreviation: team,
+                                            selected: false,
+                                            dimmed: false,
+                                            logoURL: session.teamLogos[team]
+                                        )
+                                        .frame(width: 76)
                                     }
                                 }
                             }
@@ -280,11 +381,12 @@ private struct CommissionerEntryView: View {
 
     private func gameRow(_ game: PoolGame, entry: ClaimedEntry) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 teamButton(game.awayAbbr, game: game, entry: entry)
                 Text("at")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.top, 22)
                 teamButton(game.homeAbbr, game: game, entry: entry)
             }
             HStack {
@@ -305,17 +407,36 @@ private struct CommissionerEntryView: View {
 
     private func teamButton(_ abbreviation: String, game: PoolGame, entry: ClaimedEntry) -> some View {
         let allowed = canSelect(abbreviation, game: game, entry: entry)
-        return Button {
-            selectedTeam = abbreviation
-        } label: {
-            TeamPickChip(
-                abbreviation: abbreviation,
-                selected: selectedTeam == abbreviation,
-                dimmed: !allowed && selectedTeam != abbreviation
-            )
+        let reason = unavailableReason(abbreviation, entry: entry)
+        return VStack(spacing: 4) {
+            Button {
+                selectedTeam = abbreviation
+            } label: {
+                TeamPickChip(
+                    abbreviation: abbreviation,
+                    selected: selectedTeam == abbreviation,
+                    dimmed: !allowed && selectedTeam != abbreviation,
+                    logoURL: session.teamLogos[abbreviation]
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(!allowed)
+            if let reason {
+                Text(reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(!allowed)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func unavailableReason(_ abbreviation: String, entry: ClaimedEntry) -> String? {
+        if let usedWeek = session.usedTeams(for: entry)[abbreviation], usedWeek != week {
+            return "Used in week \(usedWeek)"
+        }
+        return nil
     }
 
     private func canSelect(_ abbreviation: String, game: PoolGame, entry: ClaimedEntry) -> Bool {
@@ -329,6 +450,7 @@ private struct CommissionerEntryView: View {
 
     private func canSave(entry: ClaimedEntry) -> Bool {
         guard entry.status == .active, let selectedTeam,
+              selectedTeam != session.picks(for: entry)[week],
               let game = session.games(in: week).first(where: {
                   $0.homeAbbr == selectedTeam || $0.awayAbbr == selectedTeam
               }) else {
@@ -339,9 +461,11 @@ private struct CommissionerEntryView: View {
 
     private func saveTitle(entry: ClaimedEntry, picks: [Int: String]) -> String {
         let current = picks[week]
-        if let selectedTeam, selectedTeam != current {
-            return current == nil ? "Save \(selectedTeam)" : "Change pick to \(selectedTeam)"
+        guard let selectedTeam else { return "Save pick" }
+        let name = NFLTeam.shortName(for: selectedTeam)
+        if selectedTeam != current {
+            return current == nil ? "Save \(name)" : "Change pick to \(name)"
         }
-        return "Save pick"
+        return "\(name) saved"
     }
 }

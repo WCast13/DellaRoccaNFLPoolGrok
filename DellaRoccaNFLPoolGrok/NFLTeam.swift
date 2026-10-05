@@ -70,6 +70,11 @@ struct NFLTeam: Identifiable, Hashable {
     var secondaryColor: TeamColor { colors[1] }
     var tertiaryColor: TeamColor? { colors.count > 2 ? colors[2] : nil }
 
+    /// Mascot, matching the names on the pool sheet: "Jets", "49ers", "Buccaneers".
+    var shortName: String {
+        name.split(separator: " ").last.map(String.init) ?? abbreviation
+    }
+
     init(abbreviation: String, name: String, colors listed: [(name: String, hex: String)]) {
         precondition((2 ... 3).contains(listed.count), "\(name) needs 2 or 3 colors")
         precondition(Set(listed.map(\.name)).count == listed.count, "\(name) has duplicate color names")
@@ -97,6 +102,10 @@ extension NFLTeam {
 
     static func team(abbreviation: String) -> NFLTeam? {
         byAbbreviation[abbreviation.uppercased()]
+    }
+
+    static func shortName(for abbreviation: String) -> String {
+        team(abbreviation: abbreviation)?.shortName ?? abbreviation
     }
 
     private static let catalog: [NFLTeam] = [

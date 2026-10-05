@@ -15,35 +15,49 @@ struct MyApp: App {
     }
 }
 
+private enum AppTab: Hashable {
+    case pool
+    case entries
+    case commissioner
+}
 
 struct ContentView: View {
-    private let pool = SurvivorPoolLoader.load()
     @State private var session: PlayerSession?
+    @State private var tab: AppTab = .pool
+    @State private var appliedSignedInTab = false
 
     var body: some View {
-        TabView {
-            PoolBoardView(pool: pool)
+        TabView(selection: $tab) {
+            PoolBoardView(session: session)
                 .tabItem {
                     Label("Pool", systemImage: "list.bullet")
                 }
+                .tag(AppTab.pool)
             MyEntriesView(session: session)
                 .tabItem {
                     Label("My Entries", systemImage: "person.crop.circle")
                 }
-            CommissionerView(session: session)
-                .tabItem {
-                    Label("Commissioner", systemImage: "checkmark.shield")
-                }
+                .tag(AppTab.entries)
+            if session?.isAdmin == true {
+                CommissionerView(session: session)
+                    .tabItem {
+                        Label("Commissioner", systemImage: "checkmark.shield")
+                    }
+                    .tag(AppTab.commissioner)
+            }
         }
         .task {
             if session == nil {
                 session = PlayerSession()
             }
         }
+        .onChange(of: session?.isSignedIn) { _, signedIn in
+            guard signedIn == true, !appliedSignedInTab else { return }
+            appliedSignedInTab = true
+            tab = .entries
+        }
     }
 }
-
-
 
 #Preview {
     ContentView()

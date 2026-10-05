@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PoolBoardView: View {
-    let pool: SurvivorPool
+    var session: PlayerSession?
 
     @State private var filter: BoardFilter = .alive
     @State private var query = ""
@@ -14,12 +14,26 @@ struct PoolBoardView: View {
         var id: String { rawValue }
     }
 
-    private var filteredEntries: [PoolEntry] {
-        let base: [PoolEntry]
+    private var standings: [ClaimedEntry] { session?.standings ?? [] }
+
+    private var aliveEntries: [ClaimedEntry] { standings.filter { $0.status == .active } }
+    private var buybackEntries: [ClaimedEntry] { standings.filter(\.canBuyBack) }
+    private var eliminatedEntries: [ClaimedEntry] {
+        standings.filter { $0.status == .eliminated || ($0.status == .pendingBuyback && !$0.canBuyBack) }
+    }
+
+    /// Weeks that have started. A pick is shown only when it is already public.
+    private var visibleWeeks: [Int] {
+        let started = Set((session?.games ?? []).filter(\.hasKickedOff).map(\.week))
+        return started.sorted()
+    }
+
+    private var filteredEntries: [ClaimedEntry] {
+        let base: [ClaimedEntry]
         switch filter {
-        case .alive: base = pool.aliveEntries
-        case .buyback: base = pool.buybackEntries
-        case .out: base = pool.eliminatedEntries
+        case .alive: base = aliveEntries
+        case .buyback: base = buybackEntries
+        case .out: base = eliminatedEntries
         }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return base }
@@ -28,42 +42,74 @@ struct PoolBoardView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Show", selection: $filter) {
-                    ForEach(BoardFilter.allCases) { item in
-                        Text(item.rawValue).tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.top, 8)
-
-                Text("\(pool.aliveEntries.count) alive · \(pool.buybackEntries.count) can buy back · \(pool.eliminatedEntries.count) out")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-
-                List(filteredEntries) { entry in
-                    PoolEntryRow(entry: entry, isCommissioner: pool.adminNames.contains(entry.label))
-                }
-                .listStyle(.plain)
-                .overlay {
-                    if filteredEntries.isEmpty {
-                        ContentUnavailableView.search(text: query)
-                    }
+            Group {
+                if session == nil {
+                    ProgressView("Opening the pool")
+                } else if session?.isSignedIn != true {
+                    ContentUnavailableView(
+                        "Sign in to see the pool",
+                        systemImage: "person.crop.circle",
+                        description: Text("The standings come from the live pool. Sign in on My Entries.")
+                    )
+                } else if session?.standingsLoaded != true {
+                    ProgressView("Loading the pool")
+                } else {
+                    board
                 }
             }
             .navigationTitle("Knock-out Pool")
             .searchable(text: $query, prompt: "Entry name")
         }
     }
+
+    private var board: some View {
+        VStack(spacing: 0) {
+            Picker("Show", selection: $filter) {
+                ForEach(BoardFilter.allCases) { item in
+                    Text(item.rawValue).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(aliveEntries.count) alive · \(buybackEntries.count) can buy back · \(eliminatedEntries.count) out")
+                if let latest = visibleWeeks.last {
+                    Text("Picks show after kickoff. Through week \(latest).")
+                } else {
+                    Text("Picks show after kickoff.")
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+
+            List(filteredEntries) { entry in
+                PoolEntryRow(
+                    entry: entry,
+                    weeks: visibleWeeks,
+                    isCommissioner: PoolAdmins.names.contains(entry.label),
+                    logoURL: { session?.teamLogos[$0] }
+                )
+            }
+            .listStyle(.plain)
+            .overlay {
+                if filteredEntries.isEmpty, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ContentUnavailableView.search(text: query)
+                }
+            }
+        }
+    }
 }
 
 private struct PoolEntryRow: View {
-    let entry: PoolEntry
+    let entry: ClaimedEntry
+    let weeks: [Int]
     let isCommissioner: Bool
+    let logoURL: (String) -> URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -79,59 +125,59 @@ private struct PoolEntryRow: View {
                 }
             }
 
-            Text(statusLine)
+            Text(entry.statusLine)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 6) {
-                ForEach(1...3, id: \.self) { week in
-                    if let pick = entry.pick(for: week) {
-                        PickChip(pick: pick)
-                    } else {
-                        Text("W\(week) —")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity)
+            if !weeks.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(weeks, id: \.self) { week in
+                            weekChip(week)
+                        }
                     }
                 }
             }
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
     }
 
-    private var statusLine: String {
-        switch entry.status {
-        case .active:
-            return "Alive"
-        case .pendingBuyback:
-            if let week = entry.eliminatedWeek {
-                return "Lost week \(week) · can buy back"
+    private func weekChip(_ week: Int) -> some View {
+        let team = entry.picks[week]
+        let result = entry.resultLabel(for: week)
+        return VStack(spacing: 4) {
+            Text("W\(week)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if let team {
+                TeamPickChip(
+                    abbreviation: team,
+                    selected: false,
+                    dimmed: result != nil,
+                    logoURL: logoURL(team)
+                )
+                .frame(width: 76)
+            } else {
+                Text(result == nil ? "—" : "No pick")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 76, height: 32)
             }
-            return "Can buy back"
-        case .eliminated:
-            if let week = entry.eliminatedWeek {
-                return "Out · no buyback after week \(week)"
+            if let result {
+                Text(result)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.red)
             }
-            return "Out"
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(chipLabel(week: week, team: team, result: result))
     }
-}
 
-private struct PickChip: View {
-    let pick: PoolPick
-
-    var body: some View {
-        let team = NFLTeam.team(abbreviation: pick.team)
-        Text(pick.nickname)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(team?.primaryColor.foreground ?? .white)
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 4)
-            .background(team?.primaryColor.color ?? .gray, in: RoundedRectangle(cornerRadius: 6))
-            .accessibilityLabel("Week \(pick.week) \(pick.nickname)")
+    private func chipLabel(week: Int, team: String?, result: String?) -> String {
+        let name = team.map { NFLTeam.shortName(for: $0) } ?? "no pick"
+        if let result {
+            return "Week \(week) \(name), \(result)"
+        }
+        return "Week \(week) \(name)"
     }
 }
