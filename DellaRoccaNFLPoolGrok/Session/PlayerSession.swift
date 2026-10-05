@@ -98,7 +98,10 @@ final class PlayerSession {
 
     var roster: [ClaimedEntry] { isAdmin ? standings : [] }
 
-    private let functions = Functions.functions(region: "us-east4")
+    private func functionsClient() -> Functions {
+        Functions.functions(region: "us-east4")
+    }
+    private let isPreview: Bool
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var entryListener: ListenerRegistration?
     private var gameListener: ListenerRegistration?
@@ -110,6 +113,7 @@ final class PlayerSession {
     private var currentNonce: String?
 
     init() {
+        isPreview = false
         let current = Auth.auth().currentUser
         userID = current?.uid
         accountLabel = Self.accountLabel(for: current)
@@ -121,6 +125,39 @@ final class PlayerSession {
             }
         }
     }
+
+#if DEBUG
+    struct PreviewSample {
+        var userID: String?
+        var accountLabel = ""
+        var entries: [ClaimedEntry] = []
+        var games: [PoolGame] = []
+        var privatePicks: [String: [Int: String]] = [:]
+        var standings: [ClaimedEntry] = []
+        var standingsLoaded = false
+        var isAdmin = false
+        var privatePicksReady = false
+        var teamLogos: [String: URL] = [:]
+        var notice: String?
+        var errorMessage: String?
+    }
+
+    init(preview sample: PreviewSample) {
+        isPreview = true
+        userID = sample.userID
+        accountLabel = sample.accountLabel
+        entries = sample.entries
+        games = sample.games
+        privatePicks = sample.privatePicks
+        standings = sample.standings
+        standingsLoaded = sample.standingsLoaded
+        isAdmin = sample.isAdmin
+        privatePicksReady = sample.privatePicksReady
+        teamLogos = sample.teamLogos
+        notice = sample.notice
+        errorMessage = sample.errorMessage
+    }
+#endif
 
     var isSignedIn: Bool { userID != nil }
 
@@ -168,6 +205,15 @@ final class PlayerSession {
 
     func claim(pin: String) async {
         let trimmed = pin.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if isPreview {
+            guard EntryPin.isValid(trimmed) else {
+                errorMessage = "A PIN is one letter followed by four digits from 1 to 9."
+                return
+            }
+            notice = "Claimed a sample entry."
+            errorMessage = nil
+            return
+        }
         guard EntryPin.isValid(trimmed) else {
             errorMessage = "A PIN is one letter followed by four digits from 1 to 9."
             return
@@ -175,7 +221,7 @@ final class PlayerSession {
         isBusy = true
         defer { isBusy = false }
         do {
-            let result = try await functions.httpsCallable("claimEntry").call(["pin": trimmed])
+            let result = try await functionsClient().httpsCallable("claimEntry").call(["pin": trimmed])
             let label = (result.data as? [String: Any])?["label"] as? String
             notice = label.map { "Claimed \($0)." } ?? "Entry claimed."
             errorMessage = nil
@@ -186,10 +232,16 @@ final class PlayerSession {
     }
 
     func submitPick(entryID: String, week: Int, team: String, confirmation: String? = nil) async {
+        if isPreview {
+            privatePicks[entryID, default: [:]][week] = team
+            notice = confirmation ?? "Week \(week) pick saved. You can change it until kickoff."
+            errorMessage = nil
+            return
+        }
         isBusy = true
         defer { isBusy = false }
         do {
-            _ = try await functions.httpsCallable("submitPick").call([
+            _ = try await functionsClient().httpsCallable("submitPick").call([
                 "entryId": entryID,
                 "week": week,
                 "team": team,
@@ -203,6 +255,15 @@ final class PlayerSession {
     }
 
     func signOut() {
+        if isPreview {
+            userID = nil
+            accountLabel = ""
+            isAdmin = false
+            entries = []
+            notice = nil
+            errorMessage = nil
+            return
+        }
         do {
             try Auth.auth().signOut()
             notice = nil
@@ -324,7 +385,7 @@ final class PlayerSession {
             return
         }
         do {
-            let result = try await functions.httpsCallable("syncCommissionerClaim").call([:])
+            let result = try await functionsClient().httpsCallable("syncCommissionerClaim").call([:])
             let granted = (result.data as? [String: Any])?["admin"] as? Bool == true
             if granted {
                 _ = try await user.getIDTokenResult(forcingRefresh: true)
@@ -340,6 +401,7 @@ final class PlayerSession {
     }
 
     func watchCommissionerEntry(_ entryID: String?) {
+        guard !isPreview else { return }
         commissionerPickListener?.remove()
         commissionerPickListener = nil
         guard isAdmin, let entryID else { return }
@@ -373,10 +435,27 @@ final class PlayerSession {
     }
 
     func closeWeek(week: Int, apply: Bool) async -> CloseWeekReport? {
+        if isPreview {
+            let report = CloseWeekReport(
+                week: week,
+                missingPicks: 2,
+                losses: 1,
+                wins: 4,
+                ungraded: apply ? 0 : 1,
+                updated: apply ? 3 : 0,
+                applied: apply,
+                examples: ["Will Castellano has no pick.", "Pat Buyer lost with Bengals."]
+            )
+            notice = apply
+                ? "Week \(week) closed. \(report.updated) entries updated."
+                : "Week \(week) preview: \(report.missingPicks) missing picks, \(report.losses) losses, \(report.wins) wins."
+            errorMessage = nil
+            return report
+        }
         isBusy = true
         defer { isBusy = false }
         do {
-            let result = try await functions.httpsCallable("closeWeek").call([
+            let result = try await functionsClient().httpsCallable("closeWeek").call([
                 "week": week,
                 "apply": apply,
             ])
@@ -409,10 +488,15 @@ final class PlayerSession {
     }
 
     private func callCommissioner(_ name: String, _ data: [String: Any], success: String) async {
+        if isPreview {
+            notice = success
+            errorMessage = nil
+            return
+        }
         isBusy = true
         defer { isBusy = false }
         do {
-            _ = try await functions.httpsCallable(name).call(data)
+            _ = try await functionsClient().httpsCallable(name).call(data)
             notice = success
             errorMessage = nil
         } catch {

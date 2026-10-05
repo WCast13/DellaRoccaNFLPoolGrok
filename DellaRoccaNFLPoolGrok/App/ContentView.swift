@@ -25,6 +25,14 @@ struct ContentView: View {
     @State private var tab: AppTab = .pool
     @State private var appliedSignedInTab = false
 
+    fileprivate init(previewSession: PlayerSession? = nil, previewTab: AppTab? = nil) {
+        _session = State(initialValue: previewSession)
+        if let previewTab {
+            _tab = State(initialValue: previewTab)
+            _appliedSignedInTab = State(initialValue: true)
+        }
+    }
+
     var body: some View {
         TabView(selection: $tab) {
             PoolBoardView(session: session)
@@ -55,9 +63,26 @@ struct ContentView: View {
             appliedSignedInTab = true
             tab = .entries
         }
+        .onAppear(perform: openEntriesIfSignedIn)
+    }
+
+    private func openEntriesIfSignedIn() {
+        guard session?.isSignedIn == true, !appliedSignedInTab else { return }
+        appliedSignedInTab = true
+        tab = .entries
     }
 }
 
-#Preview {
-    ContentView()
+#if DEBUG
+#Preview("Signed out") {
+    ContentView(previewSession: PreviewData.signedOut())
 }
+
+#Preview("Player") {
+    ContentView(previewSession: PreviewData.player(), previewTab: .entries)
+}
+
+#Preview("Commissioner") {
+    ContentView(previewSession: PreviewData.commissioner(), previewTab: .commissioner)
+}
+#endif

@@ -52,3 +52,14 @@ struct TeamPickChip: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
+
+#if DEBUG
+#Preview("Pick chips") {
+    HStack(spacing: 8) {
+        TeamPickChip(abbreviation: "JAX", selected: true, dimmed: false, logoURL: PreviewData.logos["JAX"])
+        TeamPickChip(abbreviation: "SF", selected: false, dimmed: false, logoURL: PreviewData.logos["SF"])
+        TeamPickChip(abbreviation: "DAL", selected: false, dimmed: true, logoURL: PreviewData.logos["DAL"])
+    }
+    .padding()
+}
+#endif
