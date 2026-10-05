@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		E1730EFF3073038E00695A3C /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = E1730EFE3073038E00695A3C /* FirebaseAnalytics */; };
 		E1730F013073038E00695A3C /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = E1730F003073038E00695A3C /* FirebaseAnalyticsCore */; };
+		E1730F033073038E00695A3C /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = E1730F023073038E00695A3C /* FirebaseAuth */; };
+		E1730F053073038E00695A3C /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = E1730F043073038E00695A3C /* FirebaseFirestore */; };
+		E1730F073073038E00695A3C /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = E1730F063073038E00695A3C /* FirebaseFunctions */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +32,9 @@
 			files = (
 				E1730EFF3073038E00695A3C /* FirebaseAnalytics in Frameworks */,
 				E1730F013073038E00695A3C /* FirebaseAnalyticsCore in Frameworks */,
+				E1730F033073038E00695A3C /* FirebaseAuth in Frameworks */,
+				E1730F053073038E00695A3C /* FirebaseFirestore in Frameworks */,
+				E1730F073073038E00695A3C /* FirebaseFunctions in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -70,6 +76,9 @@
 			packageProductDependencies = (
 				E1730EFE3073038E00695A3C /* FirebaseAnalytics */,
 				E1730F003073038E00695A3C /* FirebaseAnalyticsCore */,
+				E1730F023073038E00695A3C /* FirebaseAuth */,
+				E1730F043073038E00695A3C /* FirebaseFirestore */,
+				E1730F063073038E00695A3C /* FirebaseFunctions */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* DellaRoccaNFLPoolGrok.app */;
@@ -389,6 +398,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E1730EFD3073038E00695A3C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAnalyticsCore;
+		};
+		E1730F023073038E00695A3C /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1730EFD3073038E00695A3C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		E1730F043073038E00695A3C /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1730EFD3073038E00695A3C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		E1730F063073038E00695A3C /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1730EFD3073038E00695A3C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

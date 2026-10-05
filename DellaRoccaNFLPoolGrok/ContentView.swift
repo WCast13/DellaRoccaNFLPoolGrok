@@ -25,6 +25,10 @@ struct ContentView: View {
                 .tabItem {
                     Label("Pool", systemImage: "list.bullet")
                 }
+            MyEntriesView()
+                .tabItem {
+                    Label("My Entries", systemImage: "person.crop.circle")
+                }
             TeamListView()
                 .tabItem {
                     Label("Teams", systemImage: "paintpalette")

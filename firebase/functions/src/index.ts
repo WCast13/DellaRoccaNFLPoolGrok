@@ -5,6 +5,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { gradeImportedWeeks } from "./grade";
+import { publishLockedPicks } from "./picks";
 import { runSeasonSync } from "./sports";
 
 const apiSportsKey = defineSecret("APISPORTS_KEY");
@@ -115,6 +116,7 @@ export const submitPick = onCall(async (request) => {
   }
 
   const entryRef = db.collection("entries").doc(entryId);
+  const privateRef = entryRef.collection("privatePicks").doc(String(week));
   const gameQuery = db.collection("games")
     .where("season", "==", 2026)
     .where("week", "==", week)
@@ -124,6 +126,7 @@ export const submitPick = onCall(async (request) => {
   await db.runTransaction(async (tx) => {
     const entry = await tx.get(entryRef);
     const games = await tx.get(gameQuery);
+    const privatePicks = await tx.get(entryRef.collection("privatePicks"));
     if (!entry.exists) throw new HttpsError("not-found", "That entry is missing.");
 
     const data = entry.data() as DocumentData;
@@ -138,27 +141,50 @@ export const submitPick = onCall(async (request) => {
     const game = games.docs[0];
     if (!game) throw new HttpsError("failed-precondition", "That team does not play this week.");
     const kickoff = game.get("kickoffAt")?.toMillis?.() ?? 0;
-    if (!admin && kickoff <= Date.now()) {
+    const locked = kickoff <= Date.now();
+    if (!admin && locked) {
       throw new HttpsError("failed-precondition", "That game has already kicked off.");
     }
 
-    const usedTeams = asTeamMap(data.usedTeams);
-    const picks = asPickMap(data.picks);
     const weekKey = String(week);
-    const previous = picks[weekKey];
-    if (previous && previous !== team && usedTeams[previous] === week) {
-      delete usedTeams[previous];
+    const taken = asTeamMap(data.usedTeams);
+    for (const pickDoc of privatePicks.docs) {
+      const pickedWeek = Number(pickDoc.id);
+      const pickedTeam = String(pickDoc.get("team") ?? "");
+      if (pickedTeam && Number.isInteger(pickedWeek)) taken[pickedTeam] = pickedWeek;
     }
-    const usedInWeek = usedTeams[team];
+    let previous = "";
+    for (const [abbr, usedWeek] of Object.entries(taken)) {
+      if (usedWeek === week) previous = abbr;
+    }
+    if (previous && previous !== team) delete taken[previous];
+    const usedInWeek = taken[team];
     if (usedInWeek !== undefined && usedInWeek !== week) {
       throw new HttpsError("already-exists", "This entry already used that team.");
     }
 
-    usedTeams[team] = week;
-    picks[weekKey] = team;
-    tx.update(entryRef, {
-      usedTeams,
-      picks,
+    if (locked) {
+      const picks = asPickMap(data.picks);
+      const usedTeams = asTeamMap(data.usedTeams);
+      const publicPrevious = picks[weekKey];
+      if (publicPrevious && publicPrevious !== team && usedTeams[publicPrevious] === week) {
+        delete usedTeams[publicPrevious];
+      }
+      picks[weekKey] = team;
+      usedTeams[team] = week;
+      tx.update(entryRef, {
+        usedTeams,
+        picks,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      tx.delete(privateRef);
+      return;
+    }
+
+    // Future picks stay off the public entry until kickoff.
+    tx.set(privateRef, {
+      team,
+      week,
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
@@ -210,7 +236,9 @@ export const recordBuyback = onCall(async (request) => {
 const ODDS_REFRESH_MS = 12 * 60 * 60 * 1000;
 
 async function syncSeasonFromSecrets(includeOdds: boolean) {
-  return runSeasonSync(apiSportsKey.value(), includeOdds ? oddsApiKey.value() : "");
+  const publishedPicks = await publishLockedPicks();
+  const result = await runSeasonSync(apiSportsKey.value(), includeOdds ? oddsApiKey.value() : "");
+  return { ...result, publishedPicks };
 }
 
 export const syncSeason = onCall({ secrets: [apiSportsKey, oddsApiKey] }, async (request) => {
