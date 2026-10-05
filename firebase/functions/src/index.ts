@@ -1,7 +1,13 @@
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore, type DocumentData } from "firebase-admin/firestore";
+import { defineSecret } from "firebase-functions/params";
 import { setGlobalOptions } from "firebase-functions/v2";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { runSeasonSync } from "./sports";
+
+const apiSportsKey = defineSecret("APISPORTS_KEY");
+const oddsApiKey = defineSecret("ODDS_API_KEY");
 
 setGlobalOptions({ region: "us-east4" });
 initializeApp();
@@ -198,6 +204,28 @@ export const recordBuyback = onCall(async (request) => {
   });
 
   return { entryId };
+});
+
+const ODDS_REFRESH_MS = 12 * 60 * 60 * 1000;
+
+async function syncSeasonFromSecrets(includeOdds: boolean) {
+  return runSeasonSync(apiSportsKey.value(), includeOdds ? oddsApiKey.value() : "");
+}
+
+export const syncSeason = onCall({ secrets: [apiSportsKey, oddsApiKey] }, async (request) => {
+  const auth = requireUser(request.auth);
+  requireAdmin(auth);
+  return syncSeasonFromSecrets(true);
+});
+
+export const syncSeasonScheduled = onSchedule({
+  schedule: "every 60 minutes",
+  secrets: [apiSportsKey, oddsApiKey],
+}, async () => {
+  const pool = await db.collection("pool").doc("2026").get();
+  const lastOdds = pool.get("oddsSyncedAt")?.toMillis?.() ?? 0;
+  const includeOdds = Date.now() - lastOdds > ODDS_REFRESH_MS;
+  await syncSeasonFromSecrets(includeOdds);
 });
 
 export const declineBuyback = onCall(async (request) => {
