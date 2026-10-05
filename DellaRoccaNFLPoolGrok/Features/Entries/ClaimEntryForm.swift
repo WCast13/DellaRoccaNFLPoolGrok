@@ -47,3 +47,15 @@ struct ClaimEntryForm: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("Empty PIN") {
+    @Previewable @State var pin = ""
+    ClaimEntryForm(session: PreviewData.claim(), pin: $pin)
+}
+
+#Preview("PIN entered") {
+    @Previewable @State var pin = "A1234"
+    ClaimEntryForm(session: PreviewData.claim(), pin: $pin)
+}
+#endif

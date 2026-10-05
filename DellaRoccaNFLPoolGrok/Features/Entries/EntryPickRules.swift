@@ -1,3 +1,7 @@
+#if DEBUG
+import SwiftUI
+#endif
+
 enum EntryPickRules {
     static func unavailableReason(
         abbreviation: String,
@@ -69,3 +73,29 @@ enum EntryPickRules {
         return allowed ? name : "\(name), unavailable"
     }
 }
+
+#if DEBUG
+#Preview("Pick rules") {
+    let session = PreviewData.player()
+    let used = session.usedTeams(for: PreviewData.will)
+    let open = PreviewData.games.first { $0.id == "w4-gb" } ?? PreviewData.games[0]
+    let usedGame = PreviewData.games.first { $0.id == "w4-jax" } ?? PreviewData.games[0]
+    let locked = PreviewData.games.first { $0.id == "w4-locked" } ?? PreviewData.games[0]
+    return List {
+        LabeledContent(
+            "Packers",
+            value: EntryPickRules.unavailableReason(abbreviation: "GB", game: open, usedTeams: used, week: 4) ?? "Available"
+        )
+        LabeledContent(
+            "Jaguars",
+            value: EntryPickRules.unavailableReason(abbreviation: "JAX", game: usedGame, usedTeams: used, week: 4) ?? "Available"
+        )
+        LabeledContent(
+            "Giants",
+            value: EntryPickRules.unavailableReason(abbreviation: "NYG", game: locked, usedTeams: used, week: 4) ?? "Available"
+        )
+        LabeledContent("Save", value: EntryPickRules.saveTitle(selectedTeam: "GB", savedTeam: nil))
+        LabeledContent("Saved", value: EntryPickRules.saveTitle(selectedTeam: "DET", savedTeam: "DET"))
+    }
+}
+#endif

@@ -25,3 +25,14 @@ struct EntrySummaryRow: View {
         .padding(.vertical, 2)
     }
 }
+
+#if DEBUG
+#Preview("Entry rows") {
+    let buyback = PreviewData.standings.first { $0.id == "pat-buyer" } ?? PreviewData.will
+    return List {
+        EntrySummaryRow(session: PreviewData.player(), entry: PreviewData.will)
+        EntrySummaryRow(session: PreviewData.player(), entry: PreviewData.casa)
+        EntrySummaryRow(session: PreviewData.player(), entry: buyback)
+    }
+}
+#endif

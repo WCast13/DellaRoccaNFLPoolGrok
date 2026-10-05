@@ -49,3 +49,53 @@ struct GamePickRow: View {
         .padding(.vertical, 4)
     }
 }
+
+#if DEBUG
+
+#Preview("Both Open and Locked") {
+    @Previewable @State var selectedTeam: String? = "NYG"
+    GamePickRow(
+        session: PreviewData.player(),
+        game: PreviewData.games.first { $0.id == "w4-jax" } ?? PreviewData.games[0],
+        entry: PreviewData.will,
+        week: 4,
+        selectedTeam: $selectedTeam
+    )
+    .padding()
+    
+    GamePickRow(
+        session: PreviewData.player(),
+        game: PreviewData.games.first { $0.id == "w4-locked" } ?? PreviewData.games[0],
+        entry: PreviewData.will,
+        week: 4,
+        selectedTeam: $selectedTeam
+    )
+    .padding()
+}
+
+
+
+#Preview("Still open") {
+    @Previewable @State var selectedTeam: String? = "nil"
+    GamePickRow(
+        session: PreviewData.player(),
+        game: PreviewData.games.first { $0.id == "w4-jax" } ?? PreviewData.games[0],
+        entry: PreviewData.will,
+        week: 4,
+        selectedTeam: $selectedTeam
+    )
+    .padding()
+}
+
+#Preview("Kicked off") {
+    @Previewable @State var selectedTeam: String? = "NYG"
+    GamePickRow(
+        session: PreviewData.player(),
+        game: PreviewData.games.first { $0.id == "w4-locked" } ?? PreviewData.games[0],
+        entry: PreviewData.will,
+        week: 4,
+        selectedTeam: $selectedTeam
+    )
+    .padding()
+}
+#endif

@@ -43,3 +43,20 @@ struct EntrySaveBar: View {
         .background(.bar)
     }
 }
+
+#if DEBUG
+#Preview("No team yet") {
+    @Previewable @State var selectedTeam: String? = nil
+    EntrySaveBar(session: PreviewData.player(), entry: PreviewData.will, week: 4, selectedTeam: $selectedTeam)
+}
+
+#Preview("Ready to save") {
+    @Previewable @State var selectedTeam: String? = "GB"
+    EntrySaveBar(session: PreviewData.player(), entry: PreviewData.will, week: 4, selectedTeam: $selectedTeam)
+}
+
+#Preview("Saved") {
+    @Previewable @State var selectedTeam: String? = "DET"
+    EntrySaveBar(session: PreviewData.player(), entry: PreviewData.casa, week: 4, selectedTeam: $selectedTeam)
+}
+#endif

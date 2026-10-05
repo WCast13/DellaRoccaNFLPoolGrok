@@ -84,3 +84,24 @@ struct EntryEditorView: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("Make a pick") {
+    NavigationStack {
+        EntryEditorView(session: PreviewData.player(), entry: PreviewData.will)
+    }
+}
+
+#Preview("Saved pick") {
+    NavigationStack {
+        EntryEditorView(session: PreviewData.player(), entry: PreviewData.casa)
+    }
+}
+
+#Preview("Needs a buyback") {
+    let entry = PreviewData.standings.first { $0.id == "pat-buyer" } ?? PreviewData.will
+    return NavigationStack {
+        EntryEditorView(session: PreviewData.player(), entry: entry)
+    }
+}
+#endif
