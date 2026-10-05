@@ -4,6 +4,7 @@ import { defineSecret } from "firebase-functions/params";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { gradeImportedWeeks } from "./grade";
 import { runSeasonSync } from "./sports";
 
 const apiSportsKey = defineSecret("APISPORTS_KEY");
@@ -226,6 +227,13 @@ export const syncSeasonScheduled = onSchedule({
   const lastOdds = pool.get("oddsSyncedAt")?.toMillis?.() ?? 0;
   const includeOdds = Date.now() - lastOdds > ODDS_REFRESH_MS;
   await syncSeasonFromSecrets(includeOdds);
+});
+
+export const gradeWeeks = onCall(async (request) => {
+  const auth = requireUser(request.auth);
+  requireAdmin(auth);
+  const apply = request.data?.apply !== false;
+  return gradeImportedWeeks(apply);
 });
 
 export const declineBuyback = onCall(async (request) => {
