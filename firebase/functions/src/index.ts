@@ -271,6 +271,141 @@ function isAdminCaller(auth: AuthToken) {
   return auth.token.admin === true;
 }
 
+/// The week a knocked-out entry owes a pick for if it wants to continue.
+function buybackPickWeek(eliminatedWeek: number): number {
+  return eliminatedWeek + 1;
+}
+
+// The player decides whether to buy back in. Electing "in" makes the entry
+// active immediately so it can pick, and marks the fee unpaid; the buyback is
+// only confirmed when that pick exists at the deadline (resolved in closeWeek).
+// Electing "out" is reversible until the deadline, and withdraws the pick.
+//
+// Deadline: the kickoff of the entry's own pick once it has committed to one,
+// otherwise the last kickoff of the week it owes a pick for. Keyed to the own
+// pick because the alternative — the last kickoff of the week — would let a
+// player watch a Thursday pick lose and then back out of the fee, making a
+// loss free.
+export const electBuyback = onCall(async (request) => {
+  const auth = requireUser(request.auth);
+  const entryId = String(request.data?.entryId ?? "");
+  const buyBackIn = request.data?.buyBackIn === true;
+  if (!entryId) throw new HttpsError("invalid-argument", "Choose an entry.");
+
+  const entryRef = db.collection("entries").doc(entryId);
+  const result = await db.runTransaction(async (tx) => {
+    const entry = await tx.get(entryRef);
+    if (!entry.exists) throw new HttpsError("not-found", "That entry is missing.");
+    const data = entry.data() as DocumentData;
+
+    if (!isAdminCaller(auth) && data.playerId !== auth.uid) {
+      throw new HttpsError("permission-denied", "That entry is not on this account.");
+    }
+    if (data.buybackDeclined === true) {
+      throw new HttpsError("failed-precondition", "This entry's buyback window has closed.");
+    }
+    const eliminatedWeek = Number(data.eliminatedWeek);
+    if (!Number.isInteger(eliminatedWeek) || eliminatedWeek > BUYBACK_THROUGH_WEEK) {
+      throw new HttpsError(
+        "failed-precondition",
+        "A buyback is only available after a loss in weeks 1 through 6."
+      );
+    }
+    const electedIn = data.buybackElection === "in";
+    if (data.status !== "pendingBuyback" && !(data.status === "active" && electedIn)) {
+      throw new HttpsError("failed-precondition", "This entry is not waiting on a buyback.");
+    }
+
+    const pickWeek = buybackPickWeek(eliminatedWeek);
+    const weekGames = await tx.get(
+      db.collection("games").where("season", "==", 2026).where("week", "==", pickWeek)
+    );
+    const privateRef = entryRef.collection("privatePicks").doc(String(pickWeek));
+    const privateDoc = await tx.get(privateRef);
+
+    const kickoffs = weekGames.docs
+      .map((doc) => doc.get("kickoffAt")?.toMillis?.() ?? 0)
+      .filter((ms) => ms > 0);
+    let deadline = kickoffs.length > 0 ? Math.max(...kickoffs) : 0;
+
+    const committedTeam = asPickMap(data.picks)[String(pickWeek)]
+      || (privateDoc.exists ? String(privateDoc.get("team") ?? "") : "");
+    if (committedTeam) {
+      const ownGame = weekGames.docs.find((doc) => {
+        const teams = doc.get("teams");
+        return Array.isArray(teams) && teams.includes(committedTeam);
+      });
+      const ownKickoff = ownGame?.get("kickoffAt")?.toMillis?.() ?? 0;
+      if (ownKickoff > 0) deadline = ownKickoff;
+    }
+    if (deadline > 0 && Date.now() >= deadline) {
+      throw new HttpsError(
+        "failed-precondition",
+        committedTeam
+          ? "Your week " + pickWeek + " pick has kicked off, so this decision is final."
+          : "The deadline for this buyback has passed."
+      );
+    }
+
+    const buybacks = Array.isArray(data.buybacks) ? [...data.buybacks] : [];
+    if (buyBackIn) {
+      const hasRow = buybacks.some(
+        (row) => Number((row as DocumentData)?.eliminatedWeek) === eliminatedWeek
+      );
+      if (!hasRow) {
+        buybacks.push({
+          eliminatedWeek,
+          electedAt: new Date().toISOString(),
+          electedBy: "player",
+          provisional: true,
+        });
+      }
+      tx.update(entryRef, {
+        status: "active",
+        buybackElection: "in",
+        buybackUnpaid: true,
+        buybacks,
+        buybackCount: buybacks.length,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return { entryId, buyBackIn: true, pickWeek };
+    }
+
+    // Backing out: drop the provisional row, the fee, and any pick made for the
+    // week owed. A row the commissioner recorded is not provisional and stays.
+    const kept = buybacks.filter(
+      (row) =>
+        !(Number((row as DocumentData)?.eliminatedWeek) === eliminatedWeek
+          && (row as DocumentData)?.provisional === true)
+    );
+    tx.update(entryRef, {
+      status: "pendingBuyback",
+      buybackElection: "out",
+      buybackUnpaid: false,
+      buybacks: kept,
+      buybackCount: kept.length,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (privateDoc.exists) tx.delete(privateRef);
+    return { entryId, buyBackIn: false, pickWeek };
+  });
+
+  return result;
+});
+
+// Commissioner override: marks a player's elected buyback as paid.
+export const markBuybackPaid = onCall(async (request) => {
+  const auth = requireUser(request.auth);
+  requireAdmin(auth);
+  const entryId = String(request.data?.entryId ?? "");
+  if (!entryId) throw new HttpsError("invalid-argument", "Choose an entry.");
+  await db.collection("entries").doc(entryId).set({
+    buybackUnpaid: false,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { entryId };
+});
+
 export const recordBuyback = onCall(async (request) => {
   const auth = requireUser(request.auth);
   requireAdmin(auth);
