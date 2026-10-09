@@ -43,9 +43,9 @@ struct PickTeamButton: View {
                     abbreviation: abbreviation,
                     selected: selectedTeam == abbreviation,
                     dimmed: !allowed && selectedTeam != abbreviation,
-                    logoURL: logoURL
+                    logoURL: logoURL,
+                    size: 75
                 )
-                .frame(width: 75, height: 75)
             }
             .buttonStyle(.plain)
             .disabled(!allowed)

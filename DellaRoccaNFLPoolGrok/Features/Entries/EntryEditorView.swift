@@ -22,8 +22,7 @@ struct EntryEditorView: View {
                                         week: pickWeek,
                                         team: team,
                                         logoURL: session.teamLogos[team],
-                                        chipWidth: 50,
-                                        chipHeight: 50
+                                        chipSize: 50
                                     )
                                 }
                             }

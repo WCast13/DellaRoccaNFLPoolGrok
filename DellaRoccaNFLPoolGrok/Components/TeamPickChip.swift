@@ -5,6 +5,14 @@ struct TeamPickChip: View {
     let selected: Bool
     let dimmed: Bool
     var logoURL: URL?
+    /// Edge length of the square chip.
+    ///
+    /// The chip owns its own geometry rather than relying on each caller to add
+    /// a frame. An unconstrained `AsyncImage` has no intrinsic size, so inside a
+    /// horizontal `ScrollView` — which proposes nil width — a caller that forgot
+    /// one rendered the placeholder at roughly 10pt and then jumped to the
+    /// logo's native 500pt once the image landed.
+    var size: CGFloat = 60
 
     var body: some View {
         let team = NFLTeam.team(abbreviation: abbreviation)
@@ -17,13 +25,12 @@ struct TeamPickChip: View {
                         Color.clear
                     }
                 }
-//                .frame(width: 60, height: 60)
             }
         }
-//        .frame(maxWidth: .infinity)
         .padding(.vertical, 3)
         .padding(.horizontal, 2)
         .background(.linearGradient(colors: [team?.primaryColor.color ?? .gray, team?.secondaryColor.color ?? .gray],startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 6))
+        .frame(width: size, height: size)
         .overlay {
             if selected {
                 RoundedRectangle(cornerRadius: 6)

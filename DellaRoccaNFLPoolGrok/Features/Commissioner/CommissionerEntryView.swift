@@ -64,7 +64,7 @@ struct CommissionerEntryView: View {
                                         week: pickWeek,
                                         team: team,
                                         logoURL: session.teamLogos[team],
-                                        chipWidth: 76
+                                        chipSize: 76
                                     )
                                 }
                             }
