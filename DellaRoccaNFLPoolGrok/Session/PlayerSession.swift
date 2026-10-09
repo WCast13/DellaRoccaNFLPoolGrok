@@ -433,8 +433,12 @@ final class PlayerSession {
             // Firestore SDK will use — not on the function's return. A fresh grant
             // can lag the token by a moment, so when the server says we're admin
             // but the claim hasn't landed yet, force-refresh and retry briefly.
-            // Attaching the collectionGroup listener before the claim propagates
-            // is what triggers "Missing or insufficient permissions".
+            // A genuinely lagging claim denies the collectionGroup listener, so the
+            // retry below is still worth having — but it was never the cause of the
+            // "Missing or insufficient permissions" seen here. firestore.rules only
+            // declared privatePicks under a concrete /entries/{entryId} parent, which
+            // cannot authorize a collection-group query at all; the recursive-wildcard
+            // rule is what fixes that.
             var token = try await user.getIDTokenResult(forcingRefresh: granted)
             if granted {
                 var attempts = 0
