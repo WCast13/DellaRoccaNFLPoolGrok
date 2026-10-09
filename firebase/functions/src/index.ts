@@ -335,7 +335,9 @@ export const syncSeasonScheduled = onSchedule({
 export const gradeWeeks = onCall(async (request) => {
   const auth = requireUser(request.auth);
   requireAdmin(auth);
-  const apply = request.data?.apply !== false;
+  // Defaulted to true, which meant a bare call rewrote terminal status and
+  // buyback history for the whole pool. Require the caller to say so.
+  const apply = request.data?.apply === true;
   return gradeImportedWeeks(apply);
 });
 
