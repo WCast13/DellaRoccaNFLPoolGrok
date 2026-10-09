@@ -6,12 +6,14 @@ private func kickoffTime(_ game: PoolGame) -> String {
     game.kickoff.formatted(date: .omitted, time: .shortened)
 }
 
+#if DEBUG
 // NOTE: Placeholder standings. `PoolGame` does not yet carry team records;
 // this returns a fixed "W-L" string so the designs below have something to
 // show. Replace with the real record once the model exposes it.
 private func standing(for abbreviation: String) -> String {
     "2-1"
 }
+#endif
 
 // A single tight line: away pick, a minimal time-over-spread stack in the
 // middle, home pick. Smallest vertical footprint so many games fit on screen.
@@ -55,6 +57,11 @@ struct GamePickRow: View {
         )
     }
 }
+
+#if DEBUG
+
+// Design explorations below are DEBUG-only scaffolding: they are referenced
+// solely by the previews in this file and must not ship in release builds.
 
 // MARK: - Design A · Records under each team
 //
@@ -234,8 +241,6 @@ struct GamePickRowStandingsC: View {
         )
     }
 }
-
-#if DEBUG
 
 #Preview("Both Open and Locked") {
     @Previewable @State var selectedTeam: String? = "NYG"

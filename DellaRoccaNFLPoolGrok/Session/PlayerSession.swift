@@ -91,12 +91,29 @@ final class PlayerSession {
     var notice: String?
     var isBusy = false
     var isAdmin = false
-    var standings: [ClaimedEntry] = []
+    var standings: [ClaimedEntry] = [] {
+        didSet { recomputeStandingBuckets() }
+    }
     var standingsLoaded = false
     var teamLogos: [String: URL] = [:]
     var privatePicksReady = false
 
+    /// Standings partitioned by board status. Cached and recomputed only when
+    /// `standings` changes so SwiftUI bodies (e.g. the searchable pool board)
+    /// don't re-filter the whole roster on every keystroke.
+    private(set) var aliveEntries: [ClaimedEntry] = []
+    private(set) var buybackEntries: [ClaimedEntry] = []
+    private(set) var eliminatedEntries: [ClaimedEntry] = []
+
     var roster: [ClaimedEntry] { isAdmin ? standings : [] }
+
+    private func recomputeStandingBuckets() {
+        aliveEntries = standings.filter { $0.status == .active }
+        buybackEntries = standings.filter(\.canBuyBack)
+        eliminatedEntries = standings.filter {
+            $0.status == .eliminated || ($0.status == .pendingBuyback && !$0.canBuyBack)
+        }
+    }
 
     private func functionsClient() -> Functions {
         Functions.functions(region: "us-east4")
@@ -110,6 +127,7 @@ final class PlayerSession {
     private var allPrivatePicksListener: ListenerRegistration?
     private var commissionerPickListener: ListenerRegistration?
     private var privateListeners: [ListenerRegistration] = []
+    private var subscribedPrivatePickIDs: Set<String> = []
     private var currentNonce: String?
 
     init() {
@@ -324,10 +342,13 @@ final class PlayerSession {
         entryListener = Firestore.firestore().collection("entries")
             .whereField("playerId", isEqualTo: uid)
             .addSnapshotListener { snapshot, error in
-                let parsed = snapshot?.documents.compactMap(ClaimedEntry.init(document:)) ?? []
+                // Keep the last-known-good entries on an error delivery (nil snapshot);
+                // only surface the error rather than wiping the list to empty.
+                let parsed = snapshot?.documents.compactMap(ClaimedEntry.init(document:))
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
+                    guard let parsed else { return }
                     self.entries = parsed.sorted {
                         $0.label.localizedStandardCompare($1.label) == .orderedAscending
                     }
@@ -338,20 +359,22 @@ final class PlayerSession {
         gameListener = Firestore.firestore().collection("games")
             .whereField("season", isEqualTo: 2026)
             .addSnapshotListener { snapshot, error in
-                let parsed = snapshot?.documents.compactMap(PoolGame.init(document:)) ?? []
+                let parsed = snapshot?.documents.compactMap(PoolGame.init(document:))
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
+                    guard let parsed else { return }
                     self.games = parsed
                 }
             }
         standingsListener?.remove()
         standingsListener = Firestore.firestore().collection("entries")
             .addSnapshotListener { snapshot, error in
-                let parsed = snapshot?.documents.compactMap(ClaimedEntry.init(document:)) ?? []
+                let parsed = snapshot?.documents.compactMap(ClaimedEntry.init(document:))
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
+                    guard let parsed else { return }
                     self.standings = parsed.sorted {
                         $0.label.localizedStandardCompare($1.label) == .orderedAscending
                     }
@@ -362,15 +385,19 @@ final class PlayerSession {
         teamListener?.remove()
         teamListener = Firestore.firestore().collection("teams")
             .addSnapshotListener { snapshot, error in
-                var logos: [String: URL] = [:]
-                for document in snapshot?.documents ?? [] {
-                    if let raw = document.data()["logoUrl"] as? String, let url = URL(string: raw) {
-                        logos[document.documentID] = url
+                let logos: [String: URL]? = snapshot.map { snap in
+                    var result: [String: URL] = [:]
+                    for document in snap.documents {
+                        if let raw = document.data()["logoUrl"] as? String, let url = URL(string: raw) {
+                            result[document.documentID] = url
+                        }
                     }
+                    return result
                 }
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
+                    guard let logos else { return }
                     self.teamLogos = logos
                 }
             }
@@ -410,17 +437,21 @@ final class PlayerSession {
             .document(entryID)
             .collection("privatePicks")
             .addSnapshotListener { snapshot, error in
-                var weekPicks: [Int: String] = [:]
-                for document in snapshot?.documents ?? [] {
-                    let data = document.data()
-                    let week = data["week"] as? Int ?? Int(document.documentID)
-                    if let week, let team = data["team"] as? String {
-                        weekPicks[week] = team
+                let weekPicks: [Int: String]? = snapshot.map { snap in
+                    var result: [Int: String] = [:]
+                    for document in snap.documents {
+                        let data = document.data()
+                        let week = data["week"] as? Int ?? Int(document.documentID)
+                        if let week, let team = data["team"] as? String {
+                            result[week] = team
+                        }
                     }
+                    return result
                 }
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
+                    guard let weekPicks else { return }
                     self.privatePicks[entryID] = weekPicks
                 }
             }
@@ -515,17 +546,21 @@ final class PlayerSession {
         privatePicksReady = false
         allPrivatePicksListener = Firestore.firestore().collectionGroup("privatePicks")
             .addSnapshotListener { snapshot, error in
-                var picksByEntry: [String: [Int: String]] = [:]
-                for document in snapshot?.documents ?? [] {
-                    guard let entryID = document.reference.parent.parent?.documentID else { continue }
-                    let data = document.data()
-                    let week = data["week"] as? Int ?? Int(document.documentID)
-                    guard let week, let team = data["team"] as? String else { continue }
-                    picksByEntry[entryID, default: [:]][week] = team
+                let picksByEntry: [String: [Int: String]]? = snapshot.map { snap in
+                    var result: [String: [Int: String]] = [:]
+                    for document in snap.documents {
+                        guard let entryID = document.reference.parent.parent?.documentID else { continue }
+                        let data = document.data()
+                        let week = data["week"] as? Int ?? Int(document.documentID)
+                        guard let week, let team = data["team"] as? String else { continue }
+                        result[entryID, default: [:]][week] = team
+                    }
+                    return result
                 }
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
+                    guard let picksByEntry else { return }
                     self.privatePicks = picksByEntry
                     self.privatePicksReady = true
                 }
@@ -533,27 +568,40 @@ final class PlayerSession {
     }
 
     private func watchPrivatePicks() {
-        clearPrivateListeners()
-        guard !isAdmin else { return }
+        guard !isAdmin else {
+            clearPrivateListeners()
+            return
+        }
         let entryIDs = Set(entries.map(\.id))
+        // The entries listener calls this on every snapshot delivery. Skip the
+        // full teardown/rebuild of per-entry listeners when the set of entries
+        // hasn't actually changed, which also avoids a removed listener's
+        // already-queued async write racing the fresh one.
+        if entryIDs == subscribedPrivatePickIDs { return }
+        clearPrivateListeners()
+        subscribedPrivatePickIDs = entryIDs
         privatePicks = privatePicks.filter { entryIDs.contains($0.key) }
         for entry in entries {
+            let entryID = entry.id
             let registration = Firestore.firestore()
                 .collection("entries")
-                .document(entry.id)
+                .document(entryID)
                 .collection("privatePicks")
                 .addSnapshotListener { snapshot, error in
-                    var weekPicks: [Int: String] = [:]
-                    for document in snapshot?.documents ?? [] {
-                        let data = document.data()
-                        let week = data["week"] as? Int ?? Int(document.documentID)
-                        let team = data["team"] as? String
-                        if let week, let team { weekPicks[week] = team }
+                    let weekPicks: [Int: String]? = snapshot.map { snap in
+                        var result: [Int: String] = [:]
+                        for document in snap.documents {
+                            let data = document.data()
+                            let week = data["week"] as? Int ?? Int(document.documentID)
+                            let team = data["team"] as? String
+                            if let week, let team { result[week] = team }
+                        }
+                        return result
                     }
                     let failure = error?.localizedDescription
-                    let entryID = entry.id
                     Task { @MainActor in
                         if let failure { self.errorMessage = failure }
+                        guard let weekPicks else { return }
                         self.privatePicks[entryID] = weekPicks
                     }
                 }
@@ -564,6 +612,7 @@ final class PlayerSession {
     private func clearPrivateListeners() {
         privateListeners.forEach { $0.remove() }
         privateListeners.removeAll()
+        subscribedPrivatePickIDs = []
     }
 
     private static func accountLabel(for user: User?) -> String {
