@@ -424,17 +424,48 @@ final class PlayerSession {
             watchAllPrivatePicks()
             return
         }
+        var resolvedAdmin = false
+        var claimLagged = false
         do {
             let result = try await functionsClient().httpsCallable("syncCommissionerClaim").call([:])
             let granted = (result.data as? [String: Any])?["admin"] as? Bool == true
+            // Base admin status on the claim actually present in the token the
+            // Firestore SDK will use — not on the function's return. A fresh grant
+            // can lag the token by a moment, so when the server says we're admin
+            // but the claim hasn't landed yet, force-refresh and retry briefly.
+            // Attaching the collectionGroup listener before the claim propagates
+            // is what triggers "Missing or insufficient permissions".
+            var token = try await user.getIDTokenResult(forcingRefresh: granted)
             if granted {
-                _ = try await user.getIDTokenResult(forcingRefresh: true)
+                var attempts = 0
+                while token.claims["admin"] as? Bool != true && attempts < 3 {
+                    // Swallow cancellation here rather than throwing into the catch
+                    // below, which would resolve a cancelled refresh to "not admin".
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    token = try await user.getIDTokenResult(forcingRefresh: true)
+                    attempts += 1
+                }
             }
-            let token = try await user.getIDTokenResult()
-            isAdmin = granted || token.claims["admin"] as? Bool == true
+            resolvedAdmin = token.claims["admin"] as? Bool == true
+            // The server granted the claim but it never reached the token. Nothing
+            // calls refreshAccess() again until the next auth-state change, so say
+            // so instead of leaving a real commissioner silently demoted.
+            claimLagged = granted && !resolvedAdmin
         } catch {
             let token = try? await user.getIDTokenResult()
-            isAdmin = token?.claims["admin"] as? Bool == true
+            resolvedAdmin = token?.claims["admin"] as? Bool == true
+        }
+        // A cancelled refresh means the caller went away mid-retry, not that the
+        // claim is absent. Leave isAdmin and the listeners as they stand.
+        if Task.isCancelled { return }
+        // The awaits above can span a sign-out or an account switch. Don't let a
+        // stale user decide admin status for whoever is signed in now, and don't
+        // re-attach listeners that watchPool() has already torn down.
+        guard Auth.auth().currentUser?.uid == user.uid else { return }
+        isAdmin = resolvedAdmin
+        if claimLagged {
+            errorMessage = "Commissioner access is still syncing. Sign out and back in if the Commissioner tab does not appear."
+            notice = nil
         }
         watchPrivatePicks()
         watchAllPrivatePicks()
