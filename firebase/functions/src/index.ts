@@ -224,6 +224,26 @@ export const submitPick = onCall(async (request) => {
       return;
     }
 
+    // An admin may change a pick whose game already kicked off to a team that
+    // has not, so this branch can be reached with a published pick standing for
+    // the week. Withdraw it: the public reconciliation used to live only in the
+    // `locked` branch above, so picks[week] kept the superseded team and
+    // usedTeams kept it burned for the rest of the season. publishLockedPicks
+    // is additive and never removes a stale usedTeams row, so the entry ended
+    // up with two teams mapped to one week.
+    const picks = asPickMap(data.picks);
+    const usedTeams = asTeamMap(data.usedTeams);
+    const publicPrevious = picks[weekKey];
+    if (publicPrevious && publicPrevious !== team) {
+      delete picks[weekKey];
+      if (usedTeams[publicPrevious] === week) delete usedTeams[publicPrevious];
+      tx.update(entryRef, {
+        picks,
+        usedTeams,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
     // Future picks stay off the public entry until kickoff.
     tx.set(privateRef, {
       team,
