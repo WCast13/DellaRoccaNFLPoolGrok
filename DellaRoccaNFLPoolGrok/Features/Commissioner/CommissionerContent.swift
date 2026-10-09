@@ -3,7 +3,8 @@ import SwiftUI
 struct CommissionerContent: View {
     @Bindable var session: PlayerSession
     @State private var query = ""
-    @State private var week = 4
+    @State private var week = 1
+    @State private var didInitWeek = false
     @State private var preview: CloseWeekReport?
     @State private var confirmClose = false
     @State private var commissionerEmail = ""
@@ -30,9 +31,23 @@ struct CommissionerContent: View {
             .searchable(text: $query, prompt: "Entry name")
         }
         .onAppear {
-            if let openWeek = session.openWeek {
-                week = openWeek
-            }
+            initializeWeek()
+        }
+        .onChange(of: session.openWeek) { _, _ in
+            initializeWeek()
+        }
+    }
+
+    /// Start on the open week, falling back to the latest scheduled week. Keeps
+    /// resolving as games load in late, but never overrides a manual change.
+    private func initializeWeek() {
+        guard !didInitWeek else { return }
+        if let openWeek = session.openWeek {
+            week = openWeek
+            didInitWeek = true
+        } else if let maxWeek = session.games.map(\.week).max() {
+            week = maxWeek
+            didInitWeek = true
         }
     }
 
@@ -161,7 +176,7 @@ struct CommissionerContent: View {
     }
 
     private var buybackEntries: [ClaimedEntry] {
-        session.roster.filter { $0.status == .pendingBuyback }
+        session.roster.filter(\.canBuyBack)
     }
 
     private var noLogin: [ClaimedEntry] {
