@@ -186,12 +186,27 @@ export async function gradeImportedWeeks(apply: boolean): Promise<GradeReport> {
     }
 
     if (!apply) continue;
+    // Union with what is already stored rather than replacing it. `buybacks`
+    // above is a fresh array built only from weeks 1-3 inference, so writing it
+    // directly erased rows written by recordBuyback — the only record that a
+    // player actually paid, and unrecoverable once gone. Stored rows win on a
+    // week collision because they carry recordedAt.
+    const storedBuybacks = Array.isArray(data.buybacks) ? data.buybacks : [];
+    const storedWeeks = new Set(
+      storedBuybacks
+        .map((row) => Number((row as DocumentData)?.eliminatedWeek))
+        .filter((week) => Number.isInteger(week))
+    );
+    const mergedBuybacks = [
+      ...storedBuybacks,
+      ...buybacks.filter((row) => !storedWeeks.has(row.eliminatedWeek)),
+    ];
     batch.set(doc.ref, {
       status,
       eliminatedWeek,
       buybackDeclined,
-      buybacks,
-      buybackCount: buybacks.length,
+      buybacks: mergedBuybacks,
+      buybackCount: mergedBuybacks.length,
       gradedThroughWeek: GRADE_THROUGH_WEEK,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
