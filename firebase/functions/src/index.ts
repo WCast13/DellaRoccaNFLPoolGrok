@@ -150,15 +150,16 @@ export const submitPick = onCall(async (request) => {
       throw new HttpsError("failed-precondition", "This entry is knocked out.");
     }
 
+    const now = Date.now();
+    const weekKey = String(week);
     const game = games.docs[0];
     if (!game) throw new HttpsError("failed-precondition", "That team does not play this week.");
     const kickoff = game.get("kickoffAt")?.toMillis?.() ?? 0;
-    const locked = kickoff <= Date.now();
+    const locked = kickoff <= now;
     if (!admin && locked) {
       throw new HttpsError("failed-precondition", "That game has already kicked off.");
     }
 
-    const weekKey = String(week);
     const taken = asTeamMap(data.usedTeams);
     for (const pickDoc of privatePicks.docs) {
       const pickedWeek = Number(pickDoc.id);
@@ -173,6 +174,36 @@ export const submitPick = onCall(async (request) => {
     const usedInWeek = taken[team];
     if (usedInWeek !== undefined && usedInWeek !== week) {
       throw new HttpsError("already-exists", "This entry already used that team.");
+    }
+
+    // The week is locked by the pick ALREADY STANDING for it, not only by the
+    // incoming team's game. Once the standing team has kicked off its result is
+    // determined, so the pick cannot be swapped for a team that plays later in
+    // the week. Checking only the incoming kickoff let an entry pick a
+    // Sunday-early team, lose, then switch to a Monday-night team before
+    // closeWeek ran — and survive the week it had already lost.
+    if (!admin && previous && previous !== team) {
+      let previousLocked: boolean;
+      if (asPickMap(data.picks)[weekKey] === previous) {
+        // Published already, and publishLockedPicks only publishes at kickoff.
+        previousLocked = true;
+      } else {
+        const previousGames = await tx.get(db.collection("games")
+          .where("season", "==", 2026)
+          .where("week", "==", week)
+          .where("teams", "array-contains", previous)
+          .limit(1));
+        const previousKickoff = previousGames.docs[0]?.get("kickoffAt")?.toMillis?.();
+        // Fail closed: a standing pick whose kickoff cannot be established is
+        // treated as locked rather than silently swappable.
+        previousLocked = previousKickoff === undefined || previousKickoff <= now;
+      }
+      if (previousLocked) {
+        throw new HttpsError(
+          "failed-precondition",
+          `Your week ${week} pick has already kicked off and cannot be changed.`
+        );
+      }
     }
 
     if (locked) {

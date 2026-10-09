@@ -52,8 +52,21 @@ struct GamePickRow: View {
             week: week,
             usedTeams: session.usedTeams(for: entry),
             logoURL: session.teamLogos[abbreviation],
-            selectedTeam: $selectedTeam
+            selectedTeam: $selectedTeam,
+            lockedBy: lockedBy
         )
+    }
+
+    /// The standing pick for this week, once its game has kicked off. From then
+    /// on the week is settled and no other team may be substituted.
+    private var lockedBy: String? {
+        guard let saved = session.picks(for: entry)[week] else { return nil }
+        guard EntryPickRules.standingPickHasKickedOff(
+            savedTeam: saved,
+            games: session.games(in: week),
+            week: week
+        ) else { return nil }
+        return saved
     }
 }
 
@@ -113,8 +126,21 @@ struct GamePickRowStandingsA: View {
             week: week,
             usedTeams: session.usedTeams(for: entry),
             logoURL: session.teamLogos[abbreviation],
-            selectedTeam: $selectedTeam
+            selectedTeam: $selectedTeam,
+            lockedBy: lockedBy
         )
+    }
+
+    /// The standing pick for this week, once its game has kicked off. From then
+    /// on the week is settled and no other team may be substituted.
+    private var lockedBy: String? {
+        guard let saved = session.picks(for: entry)[week] else { return nil }
+        guard EntryPickRules.standingPickHasKickedOff(
+            savedTeam: saved,
+            games: session.games(in: week),
+            week: week
+        ) else { return nil }
+        return saved
     }
 }
 
@@ -168,8 +194,21 @@ struct GamePickRowStandingsB: View {
             week: week,
             usedTeams: session.usedTeams(for: entry),
             logoURL: session.teamLogos[abbreviation],
-            selectedTeam: $selectedTeam
+            selectedTeam: $selectedTeam,
+            lockedBy: lockedBy
         )
+    }
+
+    /// The standing pick for this week, once its game has kicked off. From then
+    /// on the week is settled and no other team may be substituted.
+    private var lockedBy: String? {
+        guard let saved = session.picks(for: entry)[week] else { return nil }
+        guard EntryPickRules.standingPickHasKickedOff(
+            savedTeam: saved,
+            games: session.games(in: week),
+            week: week
+        ) else { return nil }
+        return saved
     }
 }
 
@@ -236,8 +275,21 @@ struct GamePickRowStandingsC: View {
             week: week,
             usedTeams: session.usedTeams(for: entry),
             logoURL: session.teamLogos[abbreviation],
-            selectedTeam: $selectedTeam
+            selectedTeam: $selectedTeam,
+            lockedBy: lockedBy
         )
+    }
+
+    /// The standing pick for this week, once its game has kicked off. From then
+    /// on the week is settled and no other team may be substituted.
+    private var lockedBy: String? {
+        guard let saved = session.picks(for: entry)[week] else { return nil }
+        guard EntryPickRules.standingPickHasKickedOff(
+            savedTeam: saved,
+            games: session.games(in: week),
+            week: week
+        ) else { return nil }
+        return saved
     }
 }
 

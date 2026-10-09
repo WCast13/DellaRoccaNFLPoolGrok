@@ -10,15 +10,35 @@ enum EntryPickRules {
         game: PoolGame,
         usedTeams: [String: Int],
         week: Int,
-        allowKickedOff: Bool = false
+        allowKickedOff: Bool = false,
+        lockedBy: String? = nil
     ) -> String? {
         if let usedWeek = usedTeams[abbreviation], usedWeek != week {
             return "Used in week \(usedWeek)"
+        }
+        if !allowKickedOff, let lockedBy, abbreviation != lockedBy {
+            return "Week locked"
         }
         if !allowKickedOff, game.hasKickedOff {
             return "Locked"
         }
         return nil
+    }
+
+    /// True once the team already standing for `week` has kicked off: the week's
+    /// result is determined, so no other team may be substituted. An unverifiable
+    /// standing pick fails closed, matching the server.
+    static func standingPickHasKickedOff(
+        savedTeam: String,
+        games: [PoolGame],
+        week: Int
+    ) -> Bool {
+        guard let game = games.first(where: {
+            $0.week == week && ($0.homeAbbr == savedTeam || $0.awayAbbr == savedTeam)
+        }) else {
+            return true
+        }
+        return game.hasKickedOff
     }
 
     static func canSelect(
@@ -27,7 +47,8 @@ enum EntryPickRules {
         entry: ClaimedEntry,
         usedTeams: [String: Int],
         week: Int,
-        allowKickedOff: Bool = false
+        allowKickedOff: Bool = false,
+        lockedBy: String? = nil
     ) -> Bool {
         guard entry.status == .active else { return false }
         guard game.homeAbbr == abbreviation || game.awayAbbr == abbreviation else { return false }
@@ -36,7 +57,8 @@ enum EntryPickRules {
             game: game,
             usedTeams: usedTeams,
             week: week,
-            allowKickedOff: allowKickedOff
+            allowKickedOff: allowKickedOff,
+            lockedBy: lockedBy
         ) == nil
     }
 
@@ -54,6 +76,12 @@ enum EntryPickRules {
               let game = games.first(where: {
                   $0.homeAbbr == selectedTeam || $0.awayAbbr == selectedTeam
               }) else {
+            return false
+        }
+        // Computed here rather than taken as a parameter: this is the gate on
+        // submission, and a caller that forgot to pass it would reopen the hole.
+        if !allowKickedOff, let savedTeam,
+           standingPickHasKickedOff(savedTeam: savedTeam, games: games, week: week) {
             return false
         }
         return canSelect(
