@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BHF Survivor Pool — wireframes</title>
+<style>
+  :root {
+    --ink: #1c1c1c;
+    --muted: #5c5c5c;
+    --line: #c8c8c8;
+    --fill: #f3f3f3;
+    --paper: #fff;
+    --page: #e6e6e6;
+    --red: #9b2c2c;
+    --green: #1d6b3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  header.deck {
+    padding: 32px 40px 8px;
+    max-width: 1280px;
+  }
+  header.deck h1 { font-size: 28px; margin: 0 0 8px; }
+  header.deck p { margin: 0 0 8px; max-width: 720px; color: var(--muted); }
+  nav.toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 40px 24px;
+    max-width: 1280px;
+  }
+  nav.toc a {
+    color: var(--ink);
+    text-decoration: none;
+    border: 1px solid #111;
+    background: #fff;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  section.group { padding: 8px 40px 36px; }
+  section.group h2 { font-size: 20px; margin: 0 0 4px; }
+  section.group > .lead { margin: 0 0 16px; color: var(--muted); max-width: 720px; }
+  .grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px 24px;
+    align-items: flex-start;
+  }
+  figure.frame { margin: 0; width: 320px; }
+  figure.frame figcaption {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  figure.frame figcaption strong { display: block; font-size: 13px; }
+  figure.frame figcaption span { color: var(--muted); }
+  .phone {
+    width: 320px;
+    background: var(--paper);
+    border-radius: 28px;
+    box-shadow: 0 0 0 8px #1a1a1a;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 640px;
+    position: relative;
+  }
+  .nav, .tabbar, .search, .segwrap, .meta, .banner, .savebar, .sheetbar {
+    flex: none;
+  }
+  .nav {
+    height: 52px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
+    padding: 0 12px 8px;
+    border-bottom: 1px solid var(--line);
+    font-weight: 650;
+  }
+  .nav > :nth-child(1) { justify-self: start; }
+  .nav > :nth-child(2) { justify-self: center; text-align: center; }
+  .nav > :nth-child(3) { justify-self: end; }
+  .nav > .title:only-child { grid-column: 1 / -1; justify-self: center; }
+  .nav .back, .nav .action { font-weight: 500; font-size: 12px; color: #333; }
+  .search, .field {
+    margin: 8px 12px;
+    border: 1px solid var(--line);
+    background: var(--fill);
+    border-radius: 10px;
+    padding: 7px 10px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .segwrap { padding: 8px 12px 0; }
+  .seg {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    border: 1px solid #111;
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 12px;
+    text-align: center;
+  }
+  .seg span { padding: 6px 0; background: #fff; }
+  .seg span + span { border-left: 1px solid #111; }
+  .seg .on { background: #111; color: #fff; }
+  .meta {
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .list { border-top: 1px solid var(--line); }
+  .row {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .row .name { font-weight: 650; }
+  .row .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .row .weekline { font-size: 13px; font-weight: 650; margin-top: 4px; }
+  .row .weekline.bad { color: var(--red); }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 650;
+    border: 1px solid #111;
+    border-radius: 999px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    vertical-align: 1px;
+  }
+  .chips { display: flex; gap: 6px; margin-top: 8px; }
+  .chip {
+    width: 58px;
+    border: 1px solid #111;
+    border-radius: 6px;
+    text-align: center;
+    padding: 4px 2px 5px;
+    background: #fff;
+    font-size: 11px;
+  }
+  .chip .wk { display: block; font-size: 10px; color: var(--muted); }
+  .chip .abbr { font-weight: 700; }
+  .chip.dim { opacity: 0.45; }
+  .chip .result { display: block; color: var(--red); font-size: 9px; font-weight: 700; margin-top: 2px; }
+  .dash {
+    width: 58px;
+    height: 36px;
+    border: 1px dashed #999;
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tabbar {
+    margin-top: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    border-top: 1px solid var(--line);
+    background: #fafafa;
+    text-align: center;
+    font-size: 11px;
+    padding: 6px 0 10px;
+  }
+  .tabbar.two { grid-template-columns: 1fr 1fr; }
+  .tabbar .on { font-weight: 700; }
+  .tabbar i {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: 0 auto 2px;
+    border: 1.5px solid #111;
+    border-radius: 3px;
+  }
+  .center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    gap: 14px;
+    color: var(--muted);
+  }
+  .center strong { color: var(--ink); font-size: 16px; }
+  .iconbox {
+    width: 44px;
+    height: 44px;
+    border: 1.5px solid #111;
+    border-radius: 12px;
+  }
+  .spinner {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #ccc;
+    border-top-color: #111;
+    border-radius: 50%;
+  }
+  .apple {
+    width: 100%;
+    max-width: 280px;
+    height: 44px;
+    background: #111;
+    color: #fff;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+  }
+  .btn {
+    display: block;
+    width: calc(100% - 28px);
+    margin: 8px 14px;
+    text-align: center;
+    border: 1px solid #111;
+    border-radius: 10px;
+    padding: 10px 8px;
+    background: #fff;
+    font-weight: 600;
+  }
+  .btn.primary { background: #111; color: #fff; }
+  .btn.disabled { opacity: 0.35; }
+  .btn.danger { color: var(--red); border-color: var(--red); background: #fff; }
+  .sectionlabel {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    padding: 12px 14px 4px;
+  }
+  .note { font-size: 12px; color: var(--muted); padding: 4px 14px 8px; }
+  .banner {
+    background: #f6f6f6;
+    border-bottom: 1px solid var(--line);
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .banner.error { color: var(--red); }
+  .game {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 6px;
+    align-items: start;
+    padding: 8px 14px;
+  }
+  .game .at { padding-top: 16px; font-size: 11px; color: var(--muted); }
+  .team { text-align: center; font-size: 11px; }
+  .team .box {
+    border: 1px solid #111;
+    border-radius: 6px;
+    padding: 8px 4px;
+    font-weight: 700;
+  }
+  .team .box.on { box-shadow: inset 0 0 0 2px #111; }
+  .team .box.off { opacity: 0.4; }
+  .team .why { color: var(--muted); font-size: 10px; margin-top: 3px; min-height: 12px; }
+  .kick { font-size: 11px; color: var(--muted); padding: 0 14px 8px; }
+  .savebar {
+    border-top: 1px solid var(--line);
+    padding: 10px 14px 14px;
+    background: #fafafa;
+  }
+  .savebar .saved { color: var(--green); font-weight: 700; text-align: center; }
+  .stepper {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .stepper .pm {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #111;
+    border-radius: 14px;
+    text-align: center;
+    line-height: 26px;
+    font-weight: 700;
+  }
+  .disclosure {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    font-weight: 650;
+    font-size: 13px;
+  }
+  .sheet {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: flex-end;
+  }
+  .sheet .card {
+    background: #fff;
+    width: 100%;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: 12px;
+    min-height: 280px;
+  }
+  .dialog {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    top: 180px;
+    background: #fff;
+    border: 1px solid #111;
+    border-radius: 14px;
+    padding: 14px;
+    text-align: center;
+  }
+  .dialog p { font-size: 12px; color: var(--muted); }
+  .dialog .btn { width: 100%; margin: 6px 0; }
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 8px 0 0;
+  }
+  .flow b {
+    background: #fff;
+    border: 1px solid #111;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .flow em { font-style: normal; color: var(--muted); }
+  .parts { display: flex; flex-wrap: wrap; gap: 16px; }
+  .part {
+    background: #fff;
+    border: 1px solid #111;
+    border-radius: 12px;
+    padding: 12px;
+    width: 220px;
+  }
+  .part h3 { margin: 0 0 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header class="deck">
+  <h1>BHF Survivor Pool</h1>
+  <p>Wireframes of the screens in the app today. Names and weeks are the sample pool used by the Xcode previews. A future pick stays off the Pool tab until that game kicks off.</p>
+  <div class="flow">
+    <b>Sign in with Apple</b><em>→</em>
+    <b>Claim a PIN</b><em>→</em>
+    <b>My Entries</b><em>→</em>
+    <b>Pick a team</b>
+    <em>and</em>
+    <b>Pool standings</b>
+    <em>Admins also get</em>
+    <b>Commissioner queues</b>
+  </div>
+</header>
+<nav class="toc">
+  <a href="#shell">Tabs</a>
+  <a href="#pool">Pool</a>
+  <a href="#entries">My Entries</a>
+  <a href="#pick">Pick editor</a>
+  <a href="#commissioner">Commissioner</a>
+  <a href="#parts">Pieces</a>
+</nav>
+
+<section class="group" id="shell">
+  <h2>Tabs</h2>
+  <p class="lead">The app opens on Pool. After sign-in it switches to My Entries. Commissioner appears only for an admin account.</p>
+  <div class="grid">
+    <figure class="frame">
+      <figcaption><strong>Signed out</strong><span>ContentView · two tabs</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Knock-out Pool</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="body center">
+          <div class="iconbox"></div>
+          <strong>Sign in to see the pool</strong>
+          <span>The standings come from the live pool. Sign in on My Entries.</span>
+        </div>
+        <div class="tabbar two">
+          <div class="on"><i></i>Pool</div>
+          <div><i></i>My Entries</div>
+        </div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Player</strong><span>Opens on My Entries</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>My Entries</span><span class="action">Sign Out</span></div>
+        <div class="body">
+          <div class="list">
+            <div class="row">
+              <div class="name">Will Castellano</div>
+              <div class="sub">Alive</div>
+              <div class="weekline bad">Week 4: No pick</div>
+            </div>
+            <div class="row">
+              <div class="name">Casa Castellano</div>
+              <div class="sub">Alive</div>
+              <div class="weekline">Week 4: Lions</div>
+            </div>
+            <div class="row">Claim another entry</div>
+          </div>
+        </div>
+        <div class="tabbar two">
+          <div><i></i>Pool</div>
+          <div class="on"><i></i>My Entries</div>
+        </div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Commissioner</strong><span>Third tab when admin is true</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Commissioner</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="body">
+          <div class="sectionlabel">Close a week</div>
+          <div class="stepper"><span class="pm">−</span><span>Week 4</span><span class="pm">+</span></div>
+          <div class="btn">Preview week 4</div>
+          <div class="sectionlabel">No pick yet (2)</div>
+          <div class="row"><div class="name">Will Castellano</div><div class="sub">Alive · Has a login · No pick</div></div>
+        </div>
+        <div class="tabbar">
+          <div><i></i>Pool</div>
+          <div><i></i>My Entries</div>
+          <div class="on"><i></i>Commissioner</div>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="group" id="pool">
+  <h2>Pool</h2>
+  <p class="lead">PoolBoardView. Signed-in players see public picks only, for weeks that have already kicked off.</p>
+  <div class="grid">
+    <figure class="frame">
+      <figcaption><strong>Opening</strong><span>Session not ready yet</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Knock-out Pool</span><span></span></div>
+        <div class="body center"><div class="spinner"></div><span>Opening the pool</span></div>
+        <div class="tabbar two"><div class="on"><i></i>Pool</div><div><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Sign in</strong><span>PoolBoardView</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Knock-out Pool</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="body center">
+          <div class="iconbox"></div>
+          <strong>Sign in to see the pool</strong>
+          <span>The standings come from the live pool. Sign in on My Entries.</span>
+        </div>
+        <div class="tabbar two"><div class="on"><i></i>Pool</div><div><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Loading</strong><span>Signed in, standings still arriving</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Knock-out Pool</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="body center"><div class="spinner"></div><span>Loading the pool</span></div>
+        <div class="tabbar two"><div class="on"><i></i>Pool</div><div><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Alive</strong><span>PoolEntryRow · week 4 pick hidden until kickoff</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Knock-out Pool</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="segwrap"><div class="seg"><span class="on">Alive</span><span>Buy back</span><span>Out</span></div></div>
+        <div class="meta">6 alive · 2 can buy back · 2 out<br>Picks show after kickoff. Through week 4.</div>
+        <div class="list">
+          <div class="row">
+            <div class="name">Ralph Della Rocca <span class="badge">Commissioner</span></div>
+            <div class="sub">Alive</div>
+            <div class="chips">
+              <div class="chip"><span class="wk">W1</span><span class="abbr">PHI</span></div>
+              <div class="chip"><span class="wk">W2</span><span class="abbr">BUF</span></div>
+              <div class="chip"><span class="wk">W3</span><span class="abbr">KC</span></div>
+              <div class="dash">—</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="name">Will Castellano <span class="badge">Commissioner</span></div>
+            <div class="sub">Alive</div>
+            <div class="chips">
+              <div class="chip"><span class="wk">W1</span><span class="abbr">JAX</span></div>
+              <div class="chip"><span class="wk">W2</span><span class="abbr">SF</span></div>
+              <div class="dash">—</div>
+              <div class="dash">—</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="name">Andrew Mehlbaum</div>
+            <div class="sub">Alive</div>
+            <div class="chips">
+              <div class="chip dim"><span class="wk">W1</span><span class="abbr">DAL</span><span class="result">Bought back</span></div>
+              <div class="chip dim"><span class="wk">W2</span><span class="abbr">MIA</span><span class="result">Bought back</span></div>
+              <div class="chip"><span class="wk">W3</span><span class="abbr">BAL</span></div>
+              <div class="dash">—</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="name">Chris Early</div>
+            <div class="sub">Alive</div>
+            <div class="chips">
+              <div class="chip"><span class="wk">W1</span><span class="abbr">NE</span></div>
+              <div class="chip"><span class="wk">W2</span><span class="abbr">LAR</span></div>
+              <div class="chip"><span class="wk">W3</span><span class="abbr">GB</span></div>
+              <div class="chip"><span class="wk">W4</span><span class="abbr">NYG</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar two"><div class="on"><i></i>Pool</div><div><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Buy back</strong><span>Same board, second segment</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Knock-out Pool</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="segwrap"><div class="seg"><span>Alive</span><span class="on">Buy back</span><span>Out</span></div></div>
+        <div class="meta">6 alive · 2 can buy back · 2 out<br>Picks show after kickoff. Through week 4.</div>
+        <div class="list">
+          <div class="row">
+            <div class="name">Pat Buyer</div>
+            <div class="sub">Lost week 3 · can buy back</div>
+            <div class="chips">
+              <div class="chip"><span class="wk">W1</span><span class="abbr">NE</span></div>
+              <div class="chip"><span class="wk">W2</span><span class="abbr">LAR</span></div>
+              <div class="chip dim"><span class="wk">W3</span><span class="abbr">CIN</span><span class="result">Loss</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="name">Sam Buyer</div>
+            <div class="sub">Lost week 3 · can buy back</div>
+            <div class="chips">
+              <div class="chip"><span class="wk">W1</span><span class="abbr">TB</span></div>
+              <div class="chip"><span class="wk">W2</span><span class="abbr">NYJ</span></div>
+              <div class="chip dim"><span class="wk">W3</span><span class="abbr">CIN</span><span class="result">Loss</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar two"><div class="on"><i></i>Pool</div><div><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Out</strong><span>Buyback declined</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Knock-out Pool</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="segwrap"><div class="seg"><span>Alive</span><span>Buy back</span><span class="on">Out</span></div></div>
+        <div class="meta">6 alive · 2 can buy back · 2 out<br>Picks show after kickoff. Through week 4.</div>
+        <div class="list">
+          <div class="row">
+            <div class="name">Allen Morrow</div>
+            <div class="sub">Out · no buyback after week 1</div>
+            <div class="chips">
+              <div class="chip dim"><span class="wk">W1</span><span class="abbr">DAL</span><span class="result">Loss</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="name">Jordan Out</div>
+            <div class="sub">Out · no buyback after week 2</div>
+            <div class="chips">
+              <div class="chip"><span class="wk">W1</span><span class="abbr">TB</span></div>
+              <div class="chip dim"><span class="wk">W2</span><span class="abbr">NYJ</span><span class="result">Loss</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar two"><div class="on"><i></i>Pool</div><div><i></i>My Entries</div></div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="group" id="entries">
+  <h2>My Entries</h2>
+  <p class="lead">Sign in, claim a PIN, then the list of entries on this Apple account. Sign Out stays in the toolbar.</p>
+  <div class="grid">
+    <figure class="frame">
+      <figcaption><strong>Sign in</strong><span>MyEntriesSignedOut</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>My Entries</span><span></span></div>
+        <div class="body center">
+          <span>Sign in with Apple, then enter the PIN the commissioners gave you. One account can hold more than one entry.</span>
+          <div class="apple">Sign in with Apple</div>
+        </div>
+        <div class="tabbar two"><div><i></i>Pool</div><div class="on"><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Sign-in failed</strong><span>StatusBanner</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>My Entries</span><span></span></div>
+        <div class="body center">
+          <span>Sign in with Apple, then enter the PIN the commissioners gave you. One account can hold more than one entry.</span>
+          <div class="apple">Sign in with Apple</div>
+          <div class="banner error" style="width:100%">Sign in with Apple did not finish.</div>
+        </div>
+        <div class="tabbar two"><div><i></i>Pool</div><div class="on"><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>First claim</strong><span>ClaimEntryForm · no entries yet</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>My Entries</span><span class="action">Sign Out</span></div>
+        <div class="sectionlabel">Claim an entry</div>
+        <div class="note">wcastellano13@gmail.com</div>
+        <div class="field">PIN</div>
+        <div class="note">One letter and four digits from 1 to 9. Zero is not used.</div>
+        <div class="btn disabled">Claim entry</div>
+        <div class="tabbar two"><div><i></i>Pool</div><div class="on"><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>PIN entered</strong><span>A1234 enables Claim entry</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>My Entries</span><span class="action">Sign Out</span></div>
+        <div class="sectionlabel">Claim an entry</div>
+        <div class="note">wcastellano13@gmail.com</div>
+        <div class="field" style="color:#111;font-weight:700;letter-spacing:0.12em">A1234</div>
+        <div class="note">One letter and four digits from 1 to 9. Zero is not used.</div>
+        <div class="btn primary">Claim entry</div>
+        <div class="tabbar two"><div><i></i>Pool</div><div class="on"><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Entry list</strong><span>MyEntriesList · EntrySummaryRow</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>My Entries</span><span class="action">Sign Out</span></div>
+        <div class="banner">Week 4 pick saved. You can change it until kickoff.</div>
+        <div class="list">
+          <div class="row">
+            <div class="name">Will Castellano ›</div>
+            <div class="sub">Alive</div>
+            <div class="weekline bad">Week 4: No pick</div>
+          </div>
+          <div class="row">
+            <div class="name">Casa Castellano ›</div>
+            <div class="sub">Alive</div>
+            <div class="weekline">Week 4: Lions</div>
+          </div>
+          <div class="row">Claim another entry</div>
+        </div>
+        <div class="tabbar two"><div><i></i>Pool</div><div class="on"><i></i>My Entries</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Claim another</strong><span>Same form in a sheet</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>My Entries</span><span class="action">Sign Out</span></div>
+        <div class="list">
+          <div class="row"><div class="name">Will Castellano</div><div class="sub">Alive</div><div class="weekline bad">Week 4: No pick</div></div>
+          <div class="row">Claim another entry</div>
+        </div>
+        <div class="sheet">
+          <div class="card">
+            <div class="nav"><span class="back">Done</span><span>Claim an entry</span><span></span></div>
+            <div class="sectionlabel">Claim an entry</div>
+            <div class="field">PIN</div>
+            <div class="note">One letter and four digits from 1 to 9. Zero is not used.</div>
+            <div class="btn disabled">Claim entry</div>
+          </div>
+        </div>
+        <div class="tabbar two"><div><i></i>Pool</div><div class="on"><i></i>My Entries</div></div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="group" id="pick">
+  <h2>Pick editor</h2>
+  <p class="lead">EntryEditorView. One team per season. The spread is a label. The save bar stays on screen.</p>
+  <div class="grid">
+    <figure class="frame">
+      <figcaption><strong>Make a pick</strong><span>Will · week 4 · Jaguars already used</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span class="back">‹ Entries</span><span class="title">Will Castellano</span><span class="action">Sign Out</span></div>
+        <div class="list">
+          <div class="row">
+            <div class="name">Will Castellano</div>
+            <div class="sub">Alive</div>
+            <div class="chips">
+              <div class="chip"><span class="wk">W1</span><span class="abbr">JAX</span></div>
+              <div class="chip"><span class="wk">W2</span><span class="abbr">SF</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="note">Week 4 locks at each game's kickoff. A team can be used once all season. The spread is only a reference.</div>
+        <div class="game">
+          <div class="team"><div class="box off">JAX</div><div class="why">Used in week 1</div></div>
+          <div class="at">at</div>
+          <div class="team"><div class="box on">PIT</div><div class="why"></div></div>
+        </div>
+        <div class="kick">Thu, Oct 8 · PIT −2.5</div>
+        <div class="game">
+          <div class="team"><div class="box">GB</div><div class="why"></div></div>
+          <div class="at">at</div>
+          <div class="team"><div class="box">DET</div><div class="why"></div></div>
+        </div>
+        <div class="kick">Fri, Oct 9 · DET −1.5</div>
+        <div class="game">
+          <div class="team"><div class="box off">NYG</div><div class="why">Locked</div></div>
+          <div class="at">at</div>
+          <div class="team"><div class="box off">DAL</div><div class="why">Locked</div></div>
+        </div>
+        <div class="kick">Sat, Oct 3 · DAL −6.5 · Kicked off</div>
+        <div class="savebar"><div class="btn primary" style="margin:0;width:100%">Save Steelers</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Saved pick</strong><span>Casa · Lions saved</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span class="back">‹ Entries</span><span class="title">Casa Castellano</span><span class="action">Sign Out</span></div>
+        <div class="banner">Week 4 pick saved. You can change it until kickoff.</div>
+        <div class="row">
+          <div class="name">Casa Castellano</div>
+          <div class="sub">Alive</div>
+          <div class="chips">
+            <div class="chip"><span class="wk">W1</span><span class="abbr">PHI</span></div>
+            <div class="chip"><span class="wk">W2</span><span class="abbr">BUF</span></div>
+            <div class="chip"><span class="wk">W3</span><span class="abbr">KC</span></div>
+            <div class="chip"><span class="wk">W4</span><span class="abbr">DET</span></div>
+          </div>
+        </div>
+        <div class="note">Week 4 locks at each game's kickoff. A team can be used once all season. The spread is only a reference.</div>
+        <div class="game">
+          <div class="team"><div class="box">GB</div><div class="why"></div></div>
+          <div class="at">at</div>
+          <div class="team"><div class="box on">DET</div><div class="why"></div></div>
+        </div>
+        <div class="kick">Fri, Oct 9 · DET −1.5</div>
+        <div class="savebar"><div class="saved">Lions saved</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Needs a buyback</strong><span>No save bar until a commissioner records it</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span class="back">‹ Entries</span><span class="title">Pat Buyer</span><span class="action">Sign Out</span></div>
+        <div class="row">
+          <div class="name">Pat Buyer</div>
+          <div class="sub">Lost week 3 · can buy back</div>
+          <div class="chips">
+            <div class="chip"><span class="wk">W1</span><span class="abbr">NE</span></div>
+            <div class="chip"><span class="wk">W2</span><span class="abbr">LAR</span></div>
+            <div class="chip dim"><span class="wk">W3</span><span class="abbr">CIN</span><span class="result">Loss</span></div>
+          </div>
+        </div>
+        <div class="note">This entry cannot make a pick until a commissioner records a buyback.</div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>No team yet</strong><span>EntrySaveBar</span></figcaption>
+      <div class="phone" style="min-height:220px">
+        <div class="body center"><span>Week 4 games</span></div>
+        <div class="savebar"><div class="btn disabled" style="margin:0;width:100%">Save pick</div></div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="group" id="commissioner">
+  <h2>Commissioner</h2>
+  <p class="lead">Queues when the search is empty. A name search switches the list to matching entries. Close week asks before it applies.</p>
+  <div class="grid">
+    <figure class="frame">
+      <figcaption><strong>Sign in first</strong><span>CommissionerContent</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Commissioner</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="body center">Sign in with Apple on My Entries. Commissioner tools appear on Ralph's and Will's accounts.</div>
+        <div class="tabbar"><div><i></i>Pool</div><div><i></i>My Entries</div><div class="on"><i></i>Commissioner</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Not a commissioner</strong><span>The tab is hidden. This is the view if it is opened.</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span class="title">Commissioner</span></div>
+        <div class="search">Entry name</div>
+        <div class="body center">wcastellano13@gmail.com is not a commissioner yet. A commissioner can add this Apple account's email.</div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Queues</strong><span>No pick, buyback, collapsed no-login</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Commissioner</span><span></span></div>
+        <div class="search">Entry name</div>
+        <div class="sectionlabel">Close a week</div>
+        <div class="stepper"><span class="pm">−</span><span>Week 4</span><span class="pm">+</span></div>
+        <div class="note">A missing pick becomes a loss once every game has kicked off. Through week 6 that entry can still buy back. After week 6 the loss is final.</div>
+        <div class="btn">Preview week 4</div>
+        <div class="note">4 wins · 1 loss · 2 missing · 1 not final</div>
+        <div class="btn danger">Close week 4</div>
+        <div class="sectionlabel">No pick yet (2)</div>
+        <div class="row"><div class="name">Will Castellano ›</div><div class="sub">Alive · Has a login · No pick</div></div>
+        <div class="row"><div class="name">Alex No Login ›</div><div class="sub">Alive · No login · No pick</div></div>
+        <div class="sectionlabel">Waiting on a buyback (2)</div>
+        <div class="row"><div class="name">Pat Buyer ›</div><div class="sub">Lost week 3 · can buy back · Has a login</div></div>
+        <div class="row"><div class="name">Sam Buyer ›</div><div class="sub">Lost week 3 · can buy back · No login</div></div>
+        <div class="disclosure"><span>No login (2)</span><span>›</span></div>
+        <div class="sectionlabel">Add a commissioner</div>
+        <div class="field">Apple ID email</div>
+        <div class="btn disabled">Allow this email</div>
+        <div class="tabbar"><div><i></i>Pool</div><div><i></i>My Entries</div><div class="on"><i></i>Commissioner</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Close week</strong><span>Confirmation before apply</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Commissioner</span><span></span></div>
+        <div class="sectionlabel">Close a week</div>
+        <div class="btn danger">Close week 4</div>
+        <div class="sheet" style="align-items:center;justify-content:center">
+          <div class="dialog" style="position:relative;top:auto;left:auto;right:auto;width:260px">
+            <strong>Close week 4?</strong>
+            <p>Alive entries with no pick, or with a final loss, are knocked out. This can be bought back through week 6.</p>
+            <div class="btn danger">Close week 4</div>
+            <div class="btn">Cancel</div>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Search</strong><span>Matching entries replace the queues</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span></span><span>Commissioner</span><span></span></div>
+        <div class="field" style="color:#111">will</div>
+        <div class="sectionlabel">Matching entries</div>
+        <div class="row"><div class="name">Will Castellano ›</div><div class="sub">Alive · Has a login · No pick</div></div>
+        <div class="sectionlabel">Add a commissioner</div>
+        <div class="field">Apple ID email</div>
+        <div class="tabbar"><div><i></i>Pool</div><div><i></i>My Entries</div><div class="on"><i></i>Commissioner</div></div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Correct a pick</strong><span>CommissionerEntryView · after kickoff is allowed</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span class="back">‹ Back</span><span class="title">Will Castellano</span><span></span></div>
+        <div class="row">
+          <div class="sub">Alive</div>
+          <div class="note" style="padding-left:0">Claimed on a player account</div>
+          <div class="chips">
+            <div class="chip"><span class="wk">W1</span><span class="abbr">JAX</span></div>
+            <div class="chip"><span class="wk">W2</span><span class="abbr">SF</span></div>
+          </div>
+        </div>
+        <div class="sectionlabel">Week 4</div>
+        <div class="stepper"><span class="pm">−</span><span>Week 4</span><span class="pm">+</span></div>
+        <div class="note">You can correct a pick after kickoff. The player can change it only before kickoff, and only on an entry they claimed.</div>
+        <div class="game">
+          <div class="team"><div class="box off">JAX</div><div class="why">Used in week 1</div></div>
+          <div class="at">at</div>
+          <div class="team"><div class="box on">PIT</div><div class="why"></div></div>
+        </div>
+        <div class="kick">Kicked off stays selectable for a commissioner</div>
+        <div class="btn primary">Save Steelers</div>
+      </div>
+    </figure>
+    <figure class="frame">
+      <figcaption><strong>Buyback</strong><span>Record or decline before a new pick</span></figcaption>
+      <div class="phone">
+        <div class="nav"><span class="back">‹ Back</span><span class="title">Pat Buyer</span><span></span></div>
+        <div class="row">
+          <div class="sub">Lost week 3 · can buy back</div>
+          <div class="note" style="padding-left:0">Claimed on a player account</div>
+        </div>
+        <div class="sectionlabel">Buyback</div>
+        <div class="btn">Record buyback</div>
+        <div class="btn danger">Decline buyback</div>
+        <div class="sheet" style="align-items:flex-end">
+          <div class="dialog" style="position:relative;top:auto;left:16px;right:16px;width:auto;margin:0 16px 28px">
+            <strong>Record a buyback for Pat Buyer?</strong>
+            <p>The entry is alive again. Teams already used stay used.</p>
+            <div class="btn">Record buyback</div>
+            <div class="btn">Cancel</div>
+          </div>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="group" id="parts">
+  <h2>Pieces</h2>
+  <p class="lead">The controls those screens share. EntryPickRules is what the labels say: available, used in another week, or locked after kickoff.</p>
+  <div class="parts">
+    <div class="part">
+      <h3>TeamPickChip</h3>
+      <div class="chips">
+        <div class="chip" style="box-shadow:inset 0 0 0 2px #111"><span class="abbr">JAX</span><span class="wk">selected</span></div>
+        <div class="chip"><span class="abbr">SF</span><span class="wk">open</span></div>
+        <div class="chip dim"><span class="abbr">DAL</span><span class="wk">dimmed</span></div>
+      </div>
+    </div>
+    <div class="part">
+      <h3>PickTeamButton</h3>
+      <div class="chips">
+        <div class="chip"><span class="abbr">PIT</span><span class="wk">Available</span></div>
+        <div class="chip" style="box-shadow:inset 0 0 0 2px #111"><span class="abbr">GB</span><span class="wk">Selected</span></div>
+        <div class="chip dim"><span class="abbr">JAX</span><span class="wk">Used in week 1</span></div>
+        <div class="chip dim"><span class="abbr">NYG</span><span class="wk">Locked</span></div>
+      </div>
+    </div>
+    <div class="part">
+      <h3>EntrySaveBar</h3>
+      <div class="btn disabled">Save pick</div>
+      <div class="btn primary">Save Packers</div>
+      <div class="saved" style="text-align:center;color:var(--green);font-weight:700;margin-top:8px">Lions saved</div>
+    </div>
+    <div class="part">
+      <h3>StatusBanner</h3>
+      <div class="banner">Week 4 pick saved. You can change it until kickoff.</div>
+      <div class="banner error">That PIN is already claimed.</div>
+    </div>
+    <div class="part">
+      <h3>EntryPickRules</h3>
+      <div class="row"><div class="name">Packers</div><div class="sub">Available</div></div>
+      <div class="row"><div class="name">Jaguars</div><div class="sub">Used in week 1</div></div>
+      <div class="row"><div class="name">Giants</div><div class="sub">Locked</div></div>
+      <div class="row"><div class="name">Save</div><div class="sub">Save Packers</div></div>
+      <div class="row"><div class="name">Saved</div><div class="sub">Lions saved</div></div>
+    </div>
+    <div class="part">
+      <h3>Week chip</h3>
+      <div class="chips">
+        <div class="chip"><span class="wk">W2</span><span class="abbr">SF</span></div>
+        <div class="dash">—</div>
+        <div class="chip dim"><span class="wk">W3</span><span class="abbr">CIN</span><span class="result">Loss</span></div>
+        <div class="chip dim"><span class="wk">W1</span><span class="abbr">DAL</span><span class="result">Bought back</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+</body>
+</html>

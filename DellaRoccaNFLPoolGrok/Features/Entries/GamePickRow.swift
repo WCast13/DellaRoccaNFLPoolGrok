@@ -315,8 +315,3 @@ struct GamePickRowStandingsC: View {
 }
 
 #endif
-
-#Playground {
-    let game = PreviewData.games.first!
-    let kickoff = game.kickoff
-}
