@@ -48,6 +48,9 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
     var usedTeams: [String: Int]
     var buybackWeeks: [Int]
     var isClaimed: Bool
+    /// Whether this entry's owner is a commissioner. Server-provided; drives
+    /// the board badge. Never an authorization check — that is the admin claim.
+    var isCommissioner: Bool = false
 
     /// Last week (inclusive) in which a knocked-out entry may still buy back.
     static let lastBuybackWeek = 6
@@ -271,6 +274,9 @@ final class PlayerSession {
                 "week": week,
                 "team": team,
             ])
+            // Optimistically reflect the saved pick locally so the save bar
+            // settles immediately; the privatePicks listener reconciles it.
+            privatePicks[entryID, default: [:]][week] = team
             notice = confirmation ?? "Week \(week) pick saved. You can change it until kickoff."
             errorMessage = nil
         } catch {
@@ -628,7 +634,7 @@ final class PlayerSession {
     }
 
     private static func randomNonce(length: Int = 32) -> String {
-        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
         var bytes = [UInt8](repeating: 0, count: length)
         let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         if status != errSecSuccess {
@@ -649,7 +655,10 @@ private extension ClaimedEntry {
     // callable there, so the decoders and their helpers are nonisolated.
     nonisolated init?(document: DocumentSnapshot) {
         let data = document.data() ?? [:]
-        guard let label = data["label"] as? String else { return nil }
+        guard let label = data["label"] as? String else {
+            print("[PlayerSession] Dropped entry \(document.documentID): missing 'label'")
+            return nil
+        }
         self.id = document.documentID
         self.label = label
         // Fail safe: a missing/unrecognized status defaults to alive rather
@@ -662,6 +671,7 @@ private extension ClaimedEntry {
         self.buybackWeeks = Self.buybackWeeks(data["buybacks"])
         let owner = data["playerId"] as? String
         self.isClaimed = owner?.isEmpty == false
+        self.isCommissioner = data["isCommissioner"] as? Bool ?? false
     }
 
     nonisolated static func buybackWeeks(_ value: Any?) -> [Int] {
@@ -719,6 +729,7 @@ private extension PoolGame {
               let home = data["homeAbbr"] as? String,
               let away = data["awayAbbr"] as? String,
               let kickoff = data["kickoffAt"] as? Timestamp else {
+            print("[PlayerSession] Dropped game \(document.documentID): missing or invalid week/homeAbbr/awayAbbr/kickoffAt")
             return nil
         }
         self.id = document.documentID

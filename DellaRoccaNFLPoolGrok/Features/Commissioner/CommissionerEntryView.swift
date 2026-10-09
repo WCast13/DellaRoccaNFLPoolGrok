@@ -3,7 +3,8 @@ import SwiftUI
 struct CommissionerEntryView: View {
     @Bindable var session: PlayerSession
     let entryID: String
-    @State private var week = 4
+    @State private var week = 1
+    @State private var didInitWeek = false
     @State private var selectedTeam: String?
     @State private var confirmBuyback = false
     @State private var confirmDecline = false
@@ -22,11 +23,27 @@ struct CommissionerEntryView: View {
         }
         .navigationTitle(entry?.label ?? "Entry")
         .onAppear {
-            if let openWeek = session.openWeek { week = openWeek }
+            initializeWeek()
             session.watchCommissionerEntry(entryID)
-            if let entry, let openWeek = session.openWeek {
-                selectedTeam = session.picks(for: entry)[openWeek]
+            if let entry {
+                selectedTeam = session.picks(for: entry)[week]
             }
+        }
+        .onChange(of: session.openWeek) { _, _ in
+            initializeWeek()
+        }
+    }
+
+    /// Start on the open week, falling back to the latest scheduled week. Keeps
+    /// resolving as games load in late, but never overrides a manual change.
+    private func initializeWeek() {
+        guard !didInitWeek else { return }
+        if let openWeek = session.openWeek {
+            week = openWeek
+            didInitWeek = true
+        } else if let maxWeek = session.games.map(\.week).max() {
+            week = maxWeek
+            didInitWeek = true
         }
     }
 
@@ -75,6 +92,11 @@ struct CommissionerEntryView: View {
                     .foregroundStyle(.secondary)
                 if entry.status != .active {
                     Text("Record a buyback before entering a new pick. This entry is not alive.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if session.games(in: week).isEmpty {
+                    Text("No games scheduled for week \(week).")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

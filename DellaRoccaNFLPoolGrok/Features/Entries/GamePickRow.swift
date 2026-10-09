@@ -1,5 +1,4 @@
 import SwiftUI
-import Playgrounds
 
 /// Formats a game's kickoff as a short local time (e.g. "1:00 PM").
 private func kickoffTime(_ game: PoolGame) -> String {

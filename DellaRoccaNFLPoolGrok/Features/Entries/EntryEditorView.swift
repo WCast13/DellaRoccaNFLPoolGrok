@@ -31,7 +31,6 @@ struct EntryEditorView: View {
                     }
                 }
             }
-            .background(.yellow.opacity(0.3))
             if entry.status == .active, let week {
                 Section {
                     ForEach(session.games(in: week)) { game in
@@ -68,9 +67,12 @@ struct EntryEditorView: View {
         .onChange(of: entry.id) { _, _ in
             selectedTeam = week.flatMap { picks[$0] }
         }
-        .onChange(of: week.flatMap { picks[$0] }) { _, team in
-            if selectedTeam == nil {
-                selectedTeam = team
+        .onChange(of: week.flatMap { picks[$0] }) { oldSaved, newSaved in
+            // Re-sync to a server-side pick change (e.g. a commissioner
+            // correction) only when the user hasn't made an unsaved selection —
+            // i.e. they're still showing the previously-saved pick.
+            if selectedTeam == nil || selectedTeam == oldSaved {
+                selectedTeam = newSaved
             }
         }
     }
