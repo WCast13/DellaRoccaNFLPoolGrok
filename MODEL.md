@@ -16,7 +16,28 @@ Swift types live in `DellaRoccaNFLPoolGrok/Models/` and `Session/PlayerSession.s
 
 A loss in week **1–6** sets `pendingBuyback`, `eliminatedWeek`, and `buybackDeclined: false`. A loss in week **7–18**, or a declined buyback, sets `eliminated` and `buybackDeclined: true`. The app calls `active` “Alive”.
 
-`recordBuyback` puts the entry back to `active`, clears `eliminatedWeek`, appends a buyback, and increments `buybackCount`. `declineBuyback` sets `eliminated` and `buybackDeclined: true`.
+## Buyback
+
+The **player** decides, and the decision is confirmed by picking. A loss in weeks 1–6 sets `pendingBuyback`; the entry then owes a pick for week **N+1**, where N is `eliminatedWeek`.
+
+| Action | Effect |
+| --- | --- |
+| `electBuyback` with `buyBackIn: true` | `active` immediately so the entry can pick, `buybackUnpaid: true`, and a `buybacks` row with `provisional: true` |
+| `electBuyback` with `buyBackIn: false` | stays `pendingBuyback` (reversible, not terminal), drops the provisional row and the fee, deletes any `privatePicks/{N+1}` |
+
+The choice is changeable until the **deadline**: the kickoff of the entry's own pick for week N+1 once it has committed to a team, otherwise the last kickoff of week N+1. Keyed to the own pick so a player cannot watch a Thursday pick lose and then back out of the fee.
+
+`closeWeek(N+1)` resolves it:
+
+| State at the deadline | Result |
+| --- | --- |
+| Elected in, has a week N+1 pick | Buyback confirmed — `provisional` dropped, `confirmedAt` stamped, `buybackElection` cleared, pick grades normally, fee still owed |
+| Elected in, no pick | `eliminated` + `buybackDeclined: true`, provisional row removed, `buybackUnpaid` cleared. **Not recorded as a loss** — a loss at week N+1 ≤ 6 would hand it a second buyback |
+| Never elected | `eliminated` + `buybackDeclined: true` |
+
+A row already carrying `confirmedAt` short-circuits this, so re-closing a week cannot lapse a completed buyback.
+
+Commissioner overrides remain: `recordBuyback` puts the entry back to `active`, clears `eliminatedWeek`, appends a non-provisional buyback, and increments `buybackCount`. `declineBuyback` sets `eliminated` and `buybackDeclined: true`. `markBuybackPaid` clears `buybackUnpaid`.
 
 ## Pick rules
 
@@ -145,7 +166,9 @@ The client skips a document with no `label`. `ClaimedEntry` is this row in Swift
 | `picks` | map | | See the `picks` table. Public |
 | `usedTeams` | map | | See the `usedTeams` table |
 | `eliminatedWeek` | number or null | | Week of the current knockout |
-| `buybackDeclined` | bool | | |
+| `buybackDeclined` | bool | | Terminal. Only the deadline resolution, `declineBuyback`, or a week 7+ loss sets it |
+| `buybackElection` | string or absent | | `in` / `out`. The player's reversible choice; deleted once the decision resolves |
+| `buybackUnpaid` | bool | | The player elected a buyback and the fee is uncollected. Cleared by `markBuybackPaid`, or on a lapse |
 | `buybacks` | array | | See the `buybacks` table |
 | `buybackCount` | number | | Length of `buybacks` after a grade or a recorded buyback |
 | `gradedThroughWeek` | number | | Set by the importer grader, currently through week 3 |
@@ -185,6 +208,9 @@ The client skips a document with no `label`. `ClaimedEntry` is this row in Swift
 | `eliminatedWeek` | number | | The week that was bought back. Swift reads only this field |
 | `recordedAt` | string | | ISO time. Written when a commissioner records the buyback |
 | `boughtBackBeforeWeek` | number | | Written by the week 1–3 grader when a later public pick shows the entry continued |
+| `provisional` | bool | | Present while a player-elected buyback is unconfirmed. Removed when `closeWeek` confirms it; the whole row is removed if it lapses |
+| `electedAt` / `electedBy` | string | | ISO time and `player`, written by `electBuyback` |
+| `confirmedAt` | string | | ISO time, written when `closeWeek` confirms the buyback |
 
 ### `entryPins` — one document per PIN
 
@@ -230,6 +256,8 @@ Commissioner access is the Auth custom claim `admin`, not this row.
 | --- | --- | --- |
 | `claimEntry` | Signed in | Binds `playerId` to the PIN’s entry |
 | `submitPick` | Owner or admin | Writes a private pick, or a public pick if the game has kicked off and the caller is admin |
+| `electBuyback` | Owner or admin | The player's own decision. `buyBackIn: true` → `active` + fee owed; `false` → stays `pendingBuyback` and withdraws the week N+1 pick |
+| `markBuybackPaid` | Admin | Clears `buybackUnpaid` |
 | `recordBuyback` | Admin | `pendingBuyback` → `active` |
 | `declineBuyback` | Admin | `pendingBuyback` → `eliminated` |
 | `closeWeek` | Admin | Grades the week. `apply: true` writes. Otherwise it returns a preview |
@@ -239,4 +267,4 @@ Commissioner access is the Auth custom claim `admin`, not this row.
 | `syncCommissionerClaim` | Signed in | Grants the admin claim when the email is allowed |
 | `addCommissionerEmail` | Admin | Adds an email to `pool/2026`, and flags that user's entries `isCommissioner` if they have an account |
 
-`closeWeek` report: `week`, `missingPicks`, `losses`, `wins`, `ungraded`, `updated`, `applied`, `examples` (up to 12 lines).
+`closeWeek` report: `week`, `missingPicks`, `losses`, `wins`, `ungraded`, `updated`, `lapsedBuybacks`, `applied`, `examples` (up to 12 lines).

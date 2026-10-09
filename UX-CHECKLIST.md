@@ -13,7 +13,8 @@ Edit this file as the list changes. Checked items are in the app. Unchecked item
 - [x] 9. Say why a team cannot be picked: "Used in week 2" or "Locked."
 - [ ] 10. Show the score once a game starts, and label the spread as a spread.
 - [ ] 11. Say that this week's result is still open before offering next week's games.
-- [ ] 12. Tell a knocked-out player which week they lost, that the money is handled outside the app, and that a commissioner has to record the buyback.
+- [x] 12. Tell a knocked-out player which week they lost and give them the buyback decision themselves: buy back in or stay eliminated, changeable until the deadline, confirmed by making the next week's pick. The fee is still settled outside the app and shows as owed.
 - [x] 13. Turn the commissioner home into three queues with counts: no pick yet, waiting on a buyback, and no login. Name search still finds any entry.
 - [ ] 14. Repeat the preview counts in the close-week confirmation, and ask before changing a pick whose game has already kicked off.
 - [x] 15. Put the team name on the pick button. Show the logo stored for that team.
+- [ ] 16. Let a commissioner remove a commissioner, and show who currently has access. Granting is one tap today and cannot be undone in the app.
