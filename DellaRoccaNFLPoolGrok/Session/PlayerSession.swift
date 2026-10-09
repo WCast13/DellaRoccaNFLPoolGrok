@@ -34,8 +34,17 @@ struct CloseWeekReport: Hashable, Sendable {
     var wins: Int
     var ungraded: Int
     var updated: Int
+    /// Entries that never completed a buyback by the decision week's deadline.
+    var lapsedBuybacks: Int
     var applied: Bool
     var examples: [String]
+}
+
+/// The player's reversible choice after a knockout in weeks 1-6. Written by the
+/// `electBuyback` callable; cleared by the backend once the decision resolves.
+enum BuybackElection: String, Hashable, Sendable {
+    case buyIn = "in"
+    case stayOut = "out"
 }
 
 struct ClaimedEntry: Identifiable, Hashable, Sendable {
@@ -51,6 +60,10 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
     /// Whether this entry's owner is a commissioner. Server-provided; drives
     /// the board badge. Never an authorization check — that is the admin claim.
     var isCommissioner: Bool = false
+    /// The player's buyback choice, while it is still changeable.
+    var buybackElection: BuybackElection? = nil
+    /// The player elected a buyback and the fee has not been collected.
+    var buybackUnpaid: Bool = false
 
     /// Last week (inclusive) in which a knocked-out entry may still buy back.
     static let lastBuybackWeek = 6
@@ -62,6 +75,22 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
         // surfaces agree. The backend re-validates before applying a buyback.
         guard let eliminatedWeek else { return true }
         return eliminatedWeek <= Self.lastBuybackWeek
+    }
+
+    /// The week this entry must pick for to complete a buyback. A buyback is
+    /// confirmed by that pick, not by electing alone.
+    var buybackPickWeek: Int? {
+        guard !buybackDeclined, let eliminatedWeek, eliminatedWeek <= Self.lastBuybackWeek else {
+            return nil
+        }
+        return eliminatedWeek + 1
+    }
+
+    /// The player still has a buyback decision open, or can still change it.
+    var hasOpenBuybackDecision: Bool {
+        guard buybackPickWeek != nil else { return false }
+        if status == .pendingBuyback { return true }
+        return status == .active && buybackElection == .buyIn
     }
 
     /// Bought-back weeks and the week that currently has this entry out.
@@ -509,6 +538,42 @@ final class PlayerSession {
         await callCommissioner("recordBuyback", ["entryId": entryID], success: "Buyback recorded. Used teams stay used.")
     }
 
+    /// The player's own buyback decision. Electing in makes the entry active so
+    /// it can pick; the buyback is only confirmed when that pick exists at the
+    /// deadline. Reversible until then.
+    func electBuyback(entryID: String, buyBackIn: Bool) async {
+        let success = buyBackIn
+            ? "You're back in. Make your pick to lock it in."
+            : "You're staying out. You can change this until the deadline."
+        if isPreview {
+            if let index = entries.firstIndex(where: { $0.id == entryID }) {
+                entries[index].buybackElection = buyBackIn ? .buyIn : .stayOut
+                entries[index].status = buyBackIn ? .active : .pendingBuyback
+                entries[index].buybackUnpaid = buyBackIn
+            }
+            notice = success
+            errorMessage = nil
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            _ = try await functionsClient().httpsCallable("electBuyback").call([
+                "entryId": entryID,
+                "buyBackIn": buyBackIn,
+            ])
+            notice = success
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            notice = nil
+        }
+    }
+
+    func markBuybackPaid(entryID: String) async {
+        await callCommissioner("markBuybackPaid", ["entryId": entryID], success: "Buyback marked paid.")
+    }
+
     func declineBuyback(entryID: String) async {
         await callCommissioner("declineBuyback", ["entryId": entryID], success: "Buyback declined. This entry is out.")
     }
@@ -522,6 +587,7 @@ final class PlayerSession {
                 wins: 4,
                 ungraded: apply ? 0 : 1,
                 updated: apply ? 3 : 0,
+                lapsedBuybacks: 1,
                 applied: apply,
                 examples: ["Will Castellano has no pick.", "Pat Buyer lost with Bengals."]
             )
@@ -546,6 +612,7 @@ final class PlayerSession {
                 wins: integer(data["wins"]) ?? 0,
                 ungraded: integer(data["ungraded"]) ?? 0,
                 updated: integer(data["updated"]) ?? 0,
+                lapsedBuybacks: integer(data["lapsedBuybacks"]) ?? 0,
                 applied: data["applied"] as? Bool ?? apply,
                 examples: data["examples"] as? [String] ?? []
             )
@@ -707,6 +774,8 @@ private extension ClaimedEntry {
         let owner = data["playerId"] as? String
         self.isClaimed = owner?.isEmpty == false
         self.isCommissioner = data["isCommissioner"] as? Bool ?? false
+        self.buybackElection = BuybackElection(rawValue: data["buybackElection"] as? String ?? "")
+        self.buybackUnpaid = data["buybackUnpaid"] as? Bool ?? false
     }
 
     nonisolated static func buybackWeeks(_ value: Any?) -> [Int] {
