@@ -3,16 +3,19 @@ import SwiftUI
 #endif
 
 enum EntryPickRules {
+    /// `allowKickedOff` lifts the post-kickoff "Locked" restriction, used by
+    /// commissioner tools that may correct a pick after a game has started.
     static func unavailableReason(
         abbreviation: String,
         game: PoolGame,
         usedTeams: [String: Int],
-        week: Int
+        week: Int,
+        allowKickedOff: Bool = false
     ) -> String? {
         if let usedWeek = usedTeams[abbreviation], usedWeek != week {
             return "Used in week \(usedWeek)"
         }
-        if game.hasKickedOff {
+        if !allowKickedOff, game.hasKickedOff {
             return "Locked"
         }
         return nil
@@ -23,7 +26,8 @@ enum EntryPickRules {
         game: PoolGame,
         entry: ClaimedEntry,
         usedTeams: [String: Int],
-        week: Int
+        week: Int,
+        allowKickedOff: Bool = false
     ) -> Bool {
         guard entry.status == .active else { return false }
         guard game.homeAbbr == abbreviation || game.awayAbbr == abbreviation else { return false }
@@ -31,7 +35,8 @@ enum EntryPickRules {
             abbreviation: abbreviation,
             game: game,
             usedTeams: usedTeams,
-            week: week
+            week: week,
+            allowKickedOff: allowKickedOff
         ) == nil
     }
 
@@ -41,7 +46,8 @@ enum EntryPickRules {
         games: [PoolGame],
         entry: ClaimedEntry,
         usedTeams: [String: Int],
-        week: Int
+        week: Int,
+        allowKickedOff: Bool = false
     ) -> Bool {
         guard let selectedTeam,
               selectedTeam != savedTeam,
@@ -55,7 +61,8 @@ enum EntryPickRules {
             game: game,
             entry: entry,
             usedTeams: usedTeams,
-            week: week
+            week: week,
+            allowKickedOff: allowKickedOff
         )
     }
 

@@ -43,18 +43,12 @@ struct CommissionerEntryView: View {
                         HStack(spacing: 6) {
                             ForEach(picks.keys.sorted(), id: \.self) { pickWeek in
                                 if let team = picks[pickWeek] {
-                                    VStack(spacing: 4) {
-                                        Text("W\(pickWeek)")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                        TeamPickChip(
-                                            abbreviation: team,
-                                            selected: false,
-                                            dimmed: false,
-                                            logoURL: session.teamLogos[team]
-                                        )
-                                        .frame(width: 76)
-                                    }
+                                    WeekPickChip(
+                                        week: pickWeek,
+                                        team: team,
+                                        logoURL: session.teamLogos[team],
+                                        chipWidth: 76
+                                    )
                                 }
                             }
                         }
@@ -103,12 +97,7 @@ struct CommissionerEntryView: View {
 
             if session.notice != nil || session.errorMessage != nil {
                 Section {
-                    if let notice = session.notice {
-                        Text(notice).font(.footnote).foregroundStyle(.secondary)
-                    }
-                    if let errorMessage = session.errorMessage {
-                        Text(errorMessage).font(.footnote).foregroundStyle(.red)
-                    }
+                    StatusMessageText(notice: session.notice, errorMessage: session.errorMessage)
                 }
             }
         }
@@ -133,12 +122,12 @@ struct CommissionerEntryView: View {
     private func gameRow(_ game: PoolGame, entry: ClaimedEntry) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
-                teamButton(game.awayAbbr, game: game, entry: entry)
+                pickButton(game.awayAbbr, game: game, entry: entry)
                 Text("at")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 22)
-                teamButton(game.homeAbbr, game: game, entry: entry)
+                pickButton(game.homeAbbr, game: game, entry: entry)
             }
             HStack {
                 Text(game.kickoff.formatted(date: .abbreviated, time: .shortened))
@@ -156,58 +145,33 @@ struct CommissionerEntryView: View {
         .padding(.vertical, 4)
     }
 
-    private func teamButton(_ abbreviation: String, game: PoolGame, entry: ClaimedEntry) -> some View {
-        let allowed = canSelect(abbreviation, game: game, entry: entry)
-        let reason = unavailableReason(abbreviation, entry: entry)
-        return VStack(spacing: 4) {
-            Button {
-                selectedTeam = abbreviation
-            } label: {
-                TeamPickChip(
-                    abbreviation: abbreviation,
-                    selected: selectedTeam == abbreviation,
-                    dimmed: !allowed && selectedTeam != abbreviation,
-                    logoURL: session.teamLogos[abbreviation]
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!allowed)
-            if let reason {
-                Text(reason)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-        }
+    private func pickButton(_ abbreviation: String, game: PoolGame, entry: ClaimedEntry) -> some View {
+        // Reuse the shared pick button; commissioners may correct a pick after
+        // kickoff, so lift the kickoff lock and surface the unavailable reason.
+        PickTeamButton(
+            abbreviation: abbreviation,
+            game: game,
+            entry: entry,
+            week: week,
+            usedTeams: session.usedTeams(for: entry),
+            logoURL: session.teamLogos[abbreviation],
+            selectedTeam: $selectedTeam,
+            allowKickedOff: true,
+            showsReason: true
+        )
         .frame(maxWidth: .infinity)
     }
 
-    private func unavailableReason(_ abbreviation: String, entry: ClaimedEntry) -> String? {
-        if let usedWeek = session.usedTeams(for: entry)[abbreviation], usedWeek != week {
-            return "Used in week \(usedWeek)"
-        }
-        return nil
-    }
-
-    private func canSelect(_ abbreviation: String, game: PoolGame, entry: ClaimedEntry) -> Bool {
-        guard entry.status == .active else { return false }
-        guard game.homeAbbr == abbreviation || game.awayAbbr == abbreviation else { return false }
-        if let usedWeek = session.usedTeams(for: entry)[abbreviation], usedWeek != week {
-            return false
-        }
-        return true
-    }
-
     private func canSave(entry: ClaimedEntry) -> Bool {
-        guard entry.status == .active, let selectedTeam,
-              selectedTeam != session.picks(for: entry)[week],
-              let game = session.games(in: week).first(where: {
-                  $0.homeAbbr == selectedTeam || $0.awayAbbr == selectedTeam
-              }) else {
-            return false
-        }
-        return canSelect(selectedTeam, game: game, entry: entry)
+        EntryPickRules.canSave(
+            selectedTeam: selectedTeam,
+            savedTeam: session.picks(for: entry)[week],
+            games: session.games(in: week),
+            entry: entry,
+            usedTeams: session.usedTeams(for: entry),
+            week: week,
+            allowKickedOff: true
+        )
     }
 
     private func saveTitle(entry: ClaimedEntry, picks: [Int: String]) -> String {

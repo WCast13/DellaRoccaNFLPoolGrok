@@ -18,20 +18,13 @@ struct EntryEditorView: View {
                         HStack {
                             ForEach(picks.keys.sorted(), id: \.self) { pickWeek in
                                 if let team = picks[pickWeek] {
-                                    
-                                    VStack(spacing: 4) {
-                                        Text("W\(pickWeek)")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                        TeamPickChip(
-                                            abbreviation: team,
-                                            selected: false,
-                                            dimmed: false,
-                                            logoURL: session.teamLogos[team]
-                                        )
-                                        .frame(width: 50, height: 50)
-                                        .background(.black.opacity(0.69))
-                                    }
+                                    WeekPickChip(
+                                        week: pickWeek,
+                                        team: team,
+                                        logoURL: session.teamLogos[team],
+                                        chipWidth: 50,
+                                        chipHeight: 50
+                                    )
                                 }
                             }
                         }

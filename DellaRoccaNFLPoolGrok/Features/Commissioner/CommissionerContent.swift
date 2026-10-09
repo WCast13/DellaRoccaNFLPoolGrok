@@ -222,17 +222,7 @@ struct CommissionerContent: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
     private var statusMessages: some View {
-        if let notice = session.notice {
-            Text(notice)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        if let errorMessage = session.errorMessage {
-            Text(errorMessage)
-                .font(.footnote)
-                .foregroundStyle(.red)
-        }
+        StatusMessageText(notice: session.notice, errorMessage: session.errorMessage)
     }
 }

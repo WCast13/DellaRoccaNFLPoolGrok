@@ -28,7 +28,13 @@ struct PoolEntryRow: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(weeks, id: \.self) { week in
-                            weekChip(week)
+                            WeekPickChip(
+                                week: week,
+                                team: entry.picks[week],
+                                result: entry.resultLabel(for: week),
+                                logoURL: entry.picks[week].flatMap(logoURL),
+                                showsEmptyPlaceholder: true
+                            )
                         }
                     }
                 }
@@ -37,44 +43,6 @@ struct PoolEntryRow: View {
         .padding(.vertical, 4)
     }
 
-    private func weekChip(_ week: Int) -> some View {
-        let team = entry.picks[week]
-        let result = entry.resultLabel(for: week)
-        return VStack(spacing: 4) {
-            Text("W\(week)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            if let team {
-                TeamPickChip(
-                    abbreviation: team,
-                    selected: false,
-                    dimmed: result != nil,
-                    logoURL: logoURL(team)
-                )
-//                .frame(width: 76)
-            } else {
-                Text(result == nil ? "—" : "No pick")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-//                    .frame(width: 76, height: 32)
-            }
-            if let result {
-                Text(result)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.red)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(chipLabel(week: week, team: team, result: result))
-    }
-
-    private func chipLabel(week: Int, team: String?, result: String?) -> String {
-        let name = team.map { NFLTeam.shortName(for: $0) } ?? "no pick"
-        if let result {
-            return "Week \(week) \(name), \(result)"
-        }
-        return "Week \(week) \(name)"
-    }
 }
 
 #if DEBUG

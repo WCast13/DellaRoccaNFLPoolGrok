@@ -49,10 +49,16 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
     var buybackWeeks: [Int]
     var isClaimed: Bool
 
+    /// Last week (inclusive) in which a knocked-out entry may still buy back.
+    static let lastBuybackWeek = 6
+
     var canBuyBack: Bool {
-        status == .pendingBuyback
-            && !buybackDeclined
-            && (eliminatedWeek ?? 7) <= 6
+        guard status == .pendingBuyback, !buybackDeclined else { return false }
+        // An unknown elimination week is treated as eligible, matching
+        // `statusLine` and the commissioner buyback section so all three
+        // surfaces agree. The backend re-validates before applying a buyback.
+        guard let eliminatedWeek else { return true }
+        return eliminatedWeek <= Self.lastBuybackWeek
     }
 
     /// Bought-back weeks and the week that currently has this entry out.
@@ -81,6 +87,7 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
 }
 
 @Observable
+@MainActor
 final class PlayerSession {
     var userID: String?
     var accountLabel = ""
@@ -638,12 +645,16 @@ final class PlayerSession {
 }
 
 private extension ClaimedEntry {
-    init?(document: DocumentSnapshot) {
+    // Firestore snapshot callbacks run off the main actor; parsing must be
+    // callable there, so the decoders and their helpers are nonisolated.
+    nonisolated init?(document: DocumentSnapshot) {
         let data = document.data() ?? [:]
         guard let label = data["label"] as? String else { return nil }
         self.id = document.documentID
         self.label = label
-        self.status = EntryStatus(rawValue: data["status"] as? String ?? "") ?? .eliminated
+        // Fail safe: a missing/unrecognized status defaults to alive rather
+        // than silently knocking the entry out. The backend is authoritative.
+        self.status = EntryStatus(rawValue: data["status"] as? String ?? "") ?? .active
         self.eliminatedWeek = integer(data["eliminatedWeek"])
         self.buybackDeclined = data["buybackDeclined"] as? Bool ?? false
         self.picks = Self.weekTeams(data["picks"])
@@ -653,7 +664,7 @@ private extension ClaimedEntry {
         self.isClaimed = owner?.isEmpty == false
     }
 
-    static func buybackWeeks(_ value: Any?) -> [Int] {
+    nonisolated static func buybackWeeks(_ value: Any?) -> [Int] {
         guard let rows = value as? [Any] else { return [] }
         return rows.compactMap { row in
             let map: [String: Any]?
@@ -668,7 +679,7 @@ private extension ClaimedEntry {
         }
     }
 
-    static func weekTeams(_ value: Any?) -> [Int: String] {
+    nonisolated static func weekTeams(_ value: Any?) -> [Int: String] {
         guard let raw = value as? [String: Any] else { return [:] }
         var picks: [Int: String] = [:]
         for (week, team) in raw {
@@ -678,7 +689,7 @@ private extension ClaimedEntry {
         return picks
     }
 
-    static func teamWeeks(_ value: Any?) -> [String: Int] {
+    nonisolated static func teamWeeks(_ value: Any?) -> [String: Int] {
         guard let raw = value as? [String: Any] else { return [:] }
         var used: [String: Int] = [:]
         for (team, week) in raw {
@@ -688,7 +699,7 @@ private extension ClaimedEntry {
     }
 }
 
-private func integer(_ value: Any?) -> Int? {
+private nonisolated func integer(_ value: Any?) -> Int? {
     switch value {
     case let number as Int:
         return number
@@ -702,7 +713,7 @@ private func integer(_ value: Any?) -> Int? {
 }
 
 private extension PoolGame {
-    init?(document: DocumentSnapshot) {
+    nonisolated init?(document: DocumentSnapshot) {
         let data = document.data() ?? [:]
         guard let week = integer(data["week"]),
               let home = data["homeAbbr"] as? String,

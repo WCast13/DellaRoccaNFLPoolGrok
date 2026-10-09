@@ -1,5 +1,25 @@
 import SwiftUI
 
+/// The bare notice/error text lines, with no surrounding chrome, so they can
+/// drop into any container (a banner, a `List`/`Form` `Section`, etc.).
+struct StatusMessageText: View {
+    let notice: String?
+    let errorMessage: String?
+
+    var body: some View {
+        if let notice {
+            Text(notice)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        if let errorMessage {
+            Text(errorMessage)
+                .font(.footnote)
+                .foregroundStyle(.red)
+        }
+    }
+}
+
 struct StatusBanner: View {
     let notice: String?
     let errorMessage: String?
@@ -7,16 +27,7 @@ struct StatusBanner: View {
     var body: some View {
         if notice != nil || errorMessage != nil {
             VStack(alignment: .leading, spacing: 4) {
-                if let notice {
-                    Text(notice)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
+                StatusMessageText(notice: notice, errorMessage: errorMessage)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal)
