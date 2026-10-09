@@ -33,6 +33,7 @@ struct PoolEntryRow: View {
                                 team: entry.picks[week],
                                 result: entry.resultLabel(for: week),
                                 logoURL: entry.picks[week].flatMap(logoURL),
+                                chipSize: 76,
                                 showsEmptyPlaceholder: true
                             )
                         }
