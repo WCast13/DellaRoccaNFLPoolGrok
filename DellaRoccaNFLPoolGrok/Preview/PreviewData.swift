@@ -52,7 +52,8 @@ enum PreviewData {
     static let will = entry(
         id: "will-castellano",
         label: "Will Castellano",
-        picks: [1: "JAX", 2: "SF"]
+        picks: [1: "JAX", 2: "SF"],
+        isCommissioner: true
     )
 
     static let casa = entry(
@@ -62,7 +63,7 @@ enum PreviewData {
     )
 
     static let standings: [ClaimedEntry] = [
-        entry(id: "ralph-della-rocca", label: "Ralph Della Rocca", picks: [1: "PHI", 2: "BUF", 3: "KC"]),
+        entry(id: "ralph-della-rocca", label: "Ralph Della Rocca", picks: [1: "PHI", 2: "BUF", 3: "KC"], isCommissioner: true),
         will,
         casa,
         entry(id: "andrew-mehlbaum", label: "Andrew Mehlbaum", picks: [1: "DAL", 2: "MIA", 3: "BAL"], buybackWeeks: [1, 2]),
@@ -132,7 +133,8 @@ enum PreviewData {
         buybackDeclined: Bool = false,
         picks: [Int: String] = [:],
         buybackWeeks: [Int] = [],
-        isClaimed: Bool = true
+        isClaimed: Bool = true,
+        isCommissioner: Bool = false
     ) -> ClaimedEntry {
         ClaimedEntry(
             id: id,
@@ -143,7 +145,8 @@ enum PreviewData {
             picks: picks,
             usedTeams: Dictionary(uniqueKeysWithValues: picks.map { ($0.value, $0.key) }),
             buybackWeeks: buybackWeeks,
-            isClaimed: isClaimed
+            isClaimed: isClaimed,
+            isCommissioner: isCommissioner
         )
     }
 

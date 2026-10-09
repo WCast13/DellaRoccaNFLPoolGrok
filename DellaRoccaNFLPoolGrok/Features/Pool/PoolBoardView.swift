@@ -94,7 +94,7 @@ struct PoolBoardView: View {
                 PoolEntryRow(
                     entry: entry,
                     weeks: weeks,
-                    isCommissioner: PoolAdmins.names.contains(entry.label),
+                    isCommissioner: entry.isCommissioner,
                     logoURL: { session?.teamLogos[$0] }
                 )
             }

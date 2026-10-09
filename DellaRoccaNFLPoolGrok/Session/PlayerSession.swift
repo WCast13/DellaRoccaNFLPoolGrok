@@ -48,6 +48,9 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
     var usedTeams: [String: Int]
     var buybackWeeks: [Int]
     var isClaimed: Bool
+    /// Whether this entry's owner is a commissioner. Server-provided; drives
+    /// the board badge. Never an authorization check — that is the admin claim.
+    var isCommissioner: Bool = false
 
     /// Last week (inclusive) in which a knocked-out entry may still buy back.
     static let lastBuybackWeek = 6
@@ -668,6 +671,7 @@ private extension ClaimedEntry {
         self.buybackWeeks = Self.buybackWeeks(data["buybacks"])
         let owner = data["playerId"] as? String
         self.isClaimed = owner?.isEmpty == false
+        self.isCommissioner = data["isCommissioner"] as? Bool ?? false
     }
 
     nonisolated static func buybackWeeks(_ value: Any?) -> [Int] {

@@ -67,6 +67,10 @@ export const claimEntry = onCall(async (request) => {
   const attemptsRef = db.collection("claimAttempts").doc(auth.uid);
   const pinRef = db.collection("entryPins").doc(pin);
 
+  const allowed = await commissionerEmails();
+  const callerEmail = String(auth.token.email ?? "").trim().toLowerCase();
+  const callerIsCommissioner = callerEmail.length > 0 && allowed.has(callerEmail);
+
   const claim = await db.runTransaction(async (tx) => {
     const attempts = await tx.get(attemptsRef);
     const pinDoc = await tx.get(pinRef);
@@ -100,7 +104,11 @@ export const claimEntry = onCall(async (request) => {
     }
 
     tx.set(attemptsRef, { count: 0, windowStart: FieldValue.serverTimestamp() }, { merge: true });
-    tx.update(entryRef, { playerId: auth.uid, claimedAt: FieldValue.serverTimestamp() });
+    tx.update(entryRef, {
+      playerId: auth.uid,
+      claimedAt: FieldValue.serverTimestamp(),
+      isCommissioner: callerIsCommissioner,
+    });
     return { entryId, label: String(entry.get("label") ?? "") };
   });
 
@@ -268,6 +276,24 @@ export const gradeWeeks = onCall(async (request) => {
   return gradeImportedWeeks(apply);
 });
 
+// Reflect a user's commissioner status onto every entry they own, so the Pool
+// board can show the badge from server data instead of a client name list.
+// This is display only; authorization remains the Auth `admin` claim.
+async function setEntriesCommissionerFlag(uid: string, isCommissioner: boolean): Promise<void> {
+  if (!uid) return;
+  const entries = await db.collection("entries").where("playerId", "==", uid).get();
+  if (entries.empty) return;
+  const batch = db.batch();
+  let changed = 0;
+  for (const doc of entries.docs) {
+    if (doc.get("isCommissioner") !== isCommissioner) {
+      batch.update(doc.ref, { isCommissioner });
+      changed += 1;
+    }
+  }
+  if (changed > 0) await batch.commit();
+}
+
 async function commissionerEmails(): Promise<Set<string>> {
   const allowed = new Set(BOOTSTRAP_COMMISSIONER_EMAILS.map((email) => email.toLowerCase()));
   const pool = await db.collection("pool").doc("2026").get();
@@ -291,6 +317,7 @@ export const syncCommissionerClaim = onCall(async (request) => {
     const user = await getAuth().getUser(auth.uid);
     await getAuth().setCustomUserClaims(auth.uid, { ...(user.customClaims ?? {}), admin: true });
   }
+  await setEntriesCommissionerFlag(auth.uid, true);
   return { admin: true };
 });
 
@@ -309,6 +336,14 @@ export const addCommissionerEmail = onCall(async (request) => {
     if (!emails.includes(email)) emails.push(email);
     tx.set(ref, { commissionerEmails: emails }, { merge: true });
   });
+  // If this person has already signed in and claimed entries, flag them now.
+  // Otherwise syncCommissionerClaim handles it the next time they sign in.
+  try {
+    const user = await getAuth().getUserByEmail(email);
+    await setEntriesCommissionerFlag(user.uid, true);
+  } catch {
+    // No account for that email yet; nothing to flag.
+  }
   return { email };
 });
 

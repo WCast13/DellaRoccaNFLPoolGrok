@@ -141,6 +141,7 @@ The client skips a document with no `label`. `ClaimedEntry` is this row in Swift
 | `status` | string | | `active`, `pendingBuyback`, `eliminated` |
 | `playerId` | string | FK → auth uid | Empty until the PIN is claimed |
 | `claimedAt` | timestamp | | Set by `claimEntry` |
+| `isCommissioner` | bool | | Owner is a commissioner. Display only (board badge), not an auth check. Set by `claimEntry`, `syncCommissionerClaim`, `addCommissionerEmail` |
 | `picks` | map | | See the `picks` table. Public |
 | `usedTeams` | map | | See the `usedTeams` table |
 | `eliminatedWeek` | number or null | | Week of the current knockout |
@@ -221,7 +222,7 @@ Commissioner access is the Auth custom claim `admin`, not this row.
 
 ## Commissioner access
 
-`syncCommissionerClaim` sets `admin: true` when the signed-in email is `wcastellano13@gmail.com` or is listed on `pool/2026.commissionerEmails`. `addCommissionerEmail` appends to that list. The Swift names in `PoolAdmins` (Ralph Della Rocca, Will Castellano) are not the auth check.
+`syncCommissionerClaim` sets `admin: true` when the signed-in email is `wcastellano13@gmail.com` or is listed on `pool/2026.commissionerEmails`. `addCommissionerEmail` appends to that list. The board's commissioner badge reads the server-written `entries.isCommissioner` field (display only); the real auth check is always the `admin` claim.
 
 ## Callable functions
 
@@ -236,6 +237,6 @@ Commissioner access is the Auth custom claim `admin`, not this row.
 | `syncSeason` | Admin | Teams, games, scores, and spreads |
 | `syncSeasonScheduled` | Hourly | Same sync. Spreads refresh only if `oddsSyncedAt` is older than 12 hours. Also publishes locked picks |
 | `syncCommissionerClaim` | Signed in | Grants the admin claim when the email is allowed |
-| `addCommissionerEmail` | Admin | Adds an email to `pool/2026` |
+| `addCommissionerEmail` | Admin | Adds an email to `pool/2026`, and flags that user's entries `isCommissioner` if they have an account |
 
 `closeWeek` report: `week`, `missingPicks`, `losses`, `wins`, `ungraded`, `updated`, `applied`, `examples` (up to 12 lines).

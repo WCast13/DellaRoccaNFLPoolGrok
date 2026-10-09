@@ -1,9 +1,5 @@
 import Foundation
 
-enum PoolAdmins {
-    static let names = ["Ralph Della Rocca", "Will Castellano"]
-}
-
 enum EntryStatus: String, Codable, Hashable {
     case active
     case pendingBuyback
