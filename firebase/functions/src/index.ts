@@ -95,15 +95,27 @@ export const claimEntry = onCall(async (request) => {
     const entryRef = db.collection("entries").doc(entryId);
     const entry = await tx.get(entryRef);
     if (!entry.exists) {
+      tx.set(attemptsRef, { count: used + 1, windowStart: nextWindowStart }, { merge: true });
       return { error: "That entry is missing.", code: "not-found" as const };
     }
 
     const owner = entry.get("playerId");
-    if (typeof owner === "string" && owner.length > 0 && owner !== auth.uid) {
+    const alreadyOwned = typeof owner === "string" && owner.length > 0;
+    if (alreadyOwned && owner !== auth.uid) {
+      // Counts against the hourly limit. Returning without incrementing made
+      // probing which PINs are taken free, and the taken/not-taken split leaks
+      // the valid PIN space.
+      tx.set(attemptsRef, { count: used + 1, windowStart: nextWindowStart }, { merge: true });
       return { error: "That entry is already on another account.", code: "already-exists" as const };
     }
 
-    tx.set(attemptsRef, { count: 0, windowStart: FieldValue.serverTimestamp() }, { merge: true });
+    // Reset only when this call actually transfers an unowned entry. Re-claiming
+    // a PIN the caller already owns falls through to success, so resetting on
+    // any success let eight guesses plus one self-claim repeat without bound
+    // against a 26 * 9^4 = 170,586 PIN space.
+    if (!alreadyOwned) {
+      tx.set(attemptsRef, { count: 0, windowStart: FieldValue.serverTimestamp() }, { merge: true });
+    }
     tx.update(entryRef, {
       playerId: auth.uid,
       claimedAt: FieldValue.serverTimestamp(),
