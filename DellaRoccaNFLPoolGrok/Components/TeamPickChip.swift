@@ -17,38 +17,28 @@ struct TeamPickChip: View {
                         Color.clear
                     }
                 }
-                .frame(width: 22, height: 22)
+//                .frame(width: 60, height: 60)
             }
-            Text(team?.shortName ?? abbreviation)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(team?.primaryColor.foreground ?? .white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            Text(abbreviation)
-                .font(.caption2)
-                .foregroundStyle(team?.primaryColor.foreground ?? .white)
-                .lineLimit(1)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .padding(.horizontal, 4)
-        .background(team?.primaryColor.color ?? .gray, in: RoundedRectangle(cornerRadius: 6))
+//        .frame(maxWidth: .infinity)
+        .padding(.vertical, 3)
+        .padding(.horizontal, 2)
+        .background(.linearGradient(colors: [team?.primaryColor.color ?? .gray, team?.secondaryColor.color ?? .gray],startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 6))
         .overlay {
             if selected {
                 RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.primary, lineWidth: 3)
+                    .strokeBorder(Color.green, lineWidth: 2)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if selected {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-                    .background(Circle().fill(.background))
-                    .padding(2)
-            }
-        }
-        .opacity(dimmed ? 0.4 : 1)
+//        .overlay(alignment: .topTrailing) {
+//            if selected {
+//                Image(systemName: "checkmark.circle.fill")
+//                    .font(.caption)
+//                    .foregroundStyle(.green)
+//                    .background(Circle().fill(.background))
+//            }
+//        }
+        .opacity(dimmed ? 0.3 : 1)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -57,7 +47,7 @@ struct TeamPickChip: View {
 #Preview("Pick chips") {
     HStack(spacing: 8) {
         TeamPickChip(abbreviation: "JAX", selected: true, dimmed: false, logoURL: PreviewData.logos["JAX"])
-        TeamPickChip(abbreviation: "SF", selected: false, dimmed: false, logoURL: PreviewData.logos["SF"])
+        TeamPickChip(abbreviation: "SF", selected: false, dimmed: true, logoURL: PreviewData.logos["SF"])
         TeamPickChip(abbreviation: "DAL", selected: false, dimmed: true, logoURL: PreviewData.logos["DAL"])
     }
     .padding()

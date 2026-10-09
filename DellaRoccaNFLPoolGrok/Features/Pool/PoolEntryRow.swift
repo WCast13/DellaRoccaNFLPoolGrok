@@ -51,12 +51,12 @@ struct PoolEntryRow: View {
                     dimmed: result != nil,
                     logoURL: logoURL(team)
                 )
-                .frame(width: 76)
+//                .frame(width: 76)
             } else {
                 Text(result == nil ? "—" : "No pick")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-                    .frame(width: 76, height: 32)
+//                    .frame(width: 76, height: 32)
             }
             if let result {
                 Text(result)

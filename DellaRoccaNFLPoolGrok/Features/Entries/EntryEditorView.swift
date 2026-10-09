@@ -12,15 +12,13 @@ struct EntryEditorView: View {
         List {
             Section {
                 Text(entry.label)
-                    .font(.title3.weight(.semibold))
-                Text(entry.statusLine)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.headline.weight(.semibold))
                 if !picks.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
+                        HStack {
                             ForEach(picks.keys.sorted(), id: \.self) { pickWeek in
                                 if let team = picks[pickWeek] {
+                                    
                                     VStack(spacing: 4) {
                                         Text("W\(pickWeek)")
                                             .font(.caption2)
@@ -31,7 +29,8 @@ struct EntryEditorView: View {
                                             dimmed: false,
                                             logoURL: session.teamLogos[team]
                                         )
-                                        .frame(width: 76)
+                                        .frame(width: 50, height: 50)
+                                        .background(.black.opacity(0.69))
                                     }
                                 }
                             }
@@ -39,19 +38,18 @@ struct EntryEditorView: View {
                     }
                 }
             }
+            .background(.yellow.opacity(0.3))
             if entry.status == .active, let week {
                 Section {
-                    Text("Week \(week) locks at each game's kickoff. A team can be used once all season. The spread is only a reference.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                     ForEach(session.games(in: week)) { game in
-                        GamePickRow(
+                        NewGamePickRowTwo(
                             session: session,
                             game: game,
                             entry: entry,
                             week: week,
                             selectedTeam: $selectedTeam
                         )
+                        .frame(height: 100)
                     }
                 }
             } else if entry.status != .active {
@@ -70,7 +68,7 @@ struct EntryEditorView: View {
                 EntrySaveBar(session: session, entry: entry, week: week, selectedTeam: $selectedTeam)
             }
         }
-        .navigationTitle(entry.label)
+//        .navigationTitle("Week \(week ?? 0)") //TODO: Dont like this Title
         .onAppear {
             selectedTeam = week.flatMap { picks[$0] }
         }

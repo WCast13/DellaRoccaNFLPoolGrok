@@ -39,21 +39,15 @@ struct PickTeamButton: View {
                     dimmed: !allowed && selectedTeam != abbreviation,
                     logoURL: logoURL
                 )
+                .frame(width: 75, height: 75)
             }
             .buttonStyle(.plain)
             .disabled(!allowed)
             .accessibilityLabel(
                 EntryPickRules.teamAccessibility(abbreviation: abbreviation, allowed: allowed, reason: reason)
             )
-            if let reason {
-                Text(reason)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
         }
-        .frame(maxWidth: .infinity)
+//        .frame(maxWidth: .infinity)
     }
 }
 
