@@ -42,7 +42,7 @@ struct EntryEditorView: View {
             if entry.status == .active, let week {
                 Section {
                     ForEach(session.games(in: week)) { game in
-                        NewGamePickRowTwo(
+                        GamePickRow(
                             session: session,
                             game: game,
                             entry: entry,

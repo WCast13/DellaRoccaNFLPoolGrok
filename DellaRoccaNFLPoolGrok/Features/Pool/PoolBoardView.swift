@@ -14,21 +14,19 @@ struct PoolBoardView: View {
         var id: String { rawValue }
     }
 
-    private var standings: [ClaimedEntry] { session?.standings ?? [] }
-
-    private var aliveEntries: [ClaimedEntry] { standings.filter { $0.status == .active } }
-    private var buybackEntries: [ClaimedEntry] { standings.filter(\.canBuyBack) }
-    private var eliminatedEntries: [ClaimedEntry] {
-        standings.filter { $0.status == .eliminated || ($0.status == .pendingBuyback && !$0.canBuyBack) }
-    }
+    private var aliveEntries: [ClaimedEntry] { session?.aliveEntries ?? [] }
+    private var buybackEntries: [ClaimedEntry] { session?.buybackEntries ?? [] }
+    private var eliminatedEntries: [ClaimedEntry] { session?.eliminatedEntries ?? [] }
 
     /// Weeks that have started. A pick is shown only when it is already public.
+    /// Kept view-local (not cached on the model) because it depends on the
+    /// current wall-clock time via `hasKickedOff`.
     private var visibleWeeks: [Int] {
         let started = Set((session?.games ?? []).filter(\.hasKickedOff).map(\.week))
         return started.sorted()
     }
 
-    private var filteredEntries: [ClaimedEntry] {
+    private func filteredEntries() -> [ClaimedEntry] {
         let base: [ClaimedEntry]
         switch filter {
         case .alive: base = aliveEntries
@@ -63,7 +61,12 @@ struct PoolBoardView: View {
     }
 
     private var board: some View {
-        VStack(spacing: 0) {
+        // Evaluate the kicked-off weeks and the filtered roster once per body
+        // pass instead of re-deriving them for the header, each row, and the
+        // empty-state overlay.
+        let weeks = visibleWeeks
+        let rows = filteredEntries()
+        return VStack(spacing: 0) {
             Picker("Show", selection: $filter) {
                 ForEach(BoardFilter.allCases) { item in
                     Text(item.rawValue).tag(item)
@@ -75,7 +78,7 @@ struct PoolBoardView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(aliveEntries.count) alive · \(buybackEntries.count) can buy back · \(eliminatedEntries.count) out")
-                if let latest = visibleWeeks.last {
+                if let latest = weeks.last {
                     Text("Picks show after kickoff. Through week \(latest).")
                 } else {
                     Text("Picks show after kickoff.")
@@ -87,17 +90,17 @@ struct PoolBoardView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
 
-            List(filteredEntries) { entry in
+            List(rows) { entry in
                 PoolEntryRow(
                     entry: entry,
-                    weeks: visibleWeeks,
+                    weeks: weeks,
                     isCommissioner: PoolAdmins.names.contains(entry.label),
                     logoURL: { session?.teamLogos[$0] }
                 )
             }
             .listStyle(.plain)
             .overlay {
-                if filteredEntries.isEmpty, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if rows.isEmpty, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     ContentUnavailableView.search(text: query)
                 }
             }
