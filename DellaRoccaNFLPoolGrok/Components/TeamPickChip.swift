@@ -10,7 +10,7 @@ struct TeamPickChip: View {
         let team = NFLTeam.team(abbreviation: abbreviation)
         VStack(spacing: 3) {
             if let logoURL {
-                AsyncImage(request: logoRequest(logoURL)) { phase in
+                AsyncImage(url: logoURL) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFit()
                     } else {
@@ -40,14 +40,6 @@ struct TeamPickChip: View {
 //        }
         .opacity(dimmed ? 0.3 : 1)
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    /// Team logos are a fixed, immutable set. Serving them from cache without
-    /// re-validation avoids reloading and flicker as rows recycle in a list.
-    private func logoRequest(_ url: URL) -> URLRequest {
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
-        return request
     }
 }
 
