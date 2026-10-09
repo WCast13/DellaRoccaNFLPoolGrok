@@ -9,6 +9,17 @@ struct EntrySaveBar: View {
     private var saved: String? { session.picks(for: entry)[week] }
     private var unchanged: Bool { selectedTeam != nil && selectedTeam == saved }
 
+    private var canSave: Bool {
+        EntryPickRules.canSave(
+            selectedTeam: selectedTeam,
+            savedTeam: saved,
+            games: session.games(in: week),
+            entry: entry,
+            usedTeams: session.usedTeams(for: entry),
+            week: week
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Divider()
@@ -21,21 +32,16 @@ struct EntrySaveBar: View {
                         .foregroundStyle(.green)
                 } else {
                     Button {
-                        guard let selectedTeam else { return }
+                        // Re-validate at tap time: a game can kick off between
+                        // render and tap, so don't rely on `.disabled` alone.
+                        guard let selectedTeam, canSave else { return }
                         Task { await session.submitPick(entryID: entry.id, week: week, team: selectedTeam) }
                     } label: {
                         Text(EntryPickRules.saveTitle(selectedTeam: selectedTeam, savedTeam: saved))
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(!EntryPickRules.canSave(
-                        selectedTeam: selectedTeam,
-                        savedTeam: saved,
-                        games: session.games(in: week),
-                        entry: entry,
-                        usedTeams: session.usedTeams(for: entry),
-                        week: week
-                    ))
+                    .disabled(!canSave)
                 }
             }
             .padding()

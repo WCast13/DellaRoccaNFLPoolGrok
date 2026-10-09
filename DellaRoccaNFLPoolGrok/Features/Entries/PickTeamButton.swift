@@ -8,6 +8,10 @@ struct PickTeamButton: View {
     let usedTeams: [String: Int]
     let logoURL: URL?
     @Binding var selectedTeam: String?
+    /// Allow picking a team whose game has already kicked off (commissioner).
+    var allowKickedOff: Bool = false
+    /// Show the unavailable reason (e.g. "Used in week 2") beneath the chip.
+    var showsReason: Bool = false
 
     private var allowed: Bool {
         EntryPickRules.canSelect(
@@ -15,7 +19,8 @@ struct PickTeamButton: View {
             game: game,
             entry: entry,
             usedTeams: usedTeams,
-            week: week
+            week: week,
+            allowKickedOff: allowKickedOff
         )
     }
 
@@ -24,7 +29,8 @@ struct PickTeamButton: View {
             abbreviation: abbreviation,
             game: game,
             usedTeams: usedTeams,
-            week: week
+            week: week,
+            allowKickedOff: allowKickedOff
         )
     }
 
@@ -46,8 +52,14 @@ struct PickTeamButton: View {
             .accessibilityLabel(
                 EntryPickRules.teamAccessibility(abbreviation: abbreviation, allowed: allowed, reason: reason)
             )
+            if showsReason, let reason {
+                Text(reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
         }
-//        .frame(maxWidth: .infinity)
     }
 }
 

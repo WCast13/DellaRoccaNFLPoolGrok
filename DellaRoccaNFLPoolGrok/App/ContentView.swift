@@ -63,6 +63,14 @@ struct ContentView: View {
             appliedSignedInTab = true
             tab = .entries
         }
+        .onChange(of: session?.isAdmin) { _, isAdmin in
+            // The Commissioner tab only exists while isAdmin is true. If access
+            // is revoked (e.g. sign-out) while it's selected, the bound
+            // selection would point at a missing tag; fall back to Pool.
+            if isAdmin != true, tab == .commissioner {
+                tab = .pool
+            }
+        }
         .onAppear(perform: openEntriesIfSignedIn)
     }
 
