@@ -95,15 +95,27 @@ export const claimEntry = onCall(async (request) => {
     const entryRef = db.collection("entries").doc(entryId);
     const entry = await tx.get(entryRef);
     if (!entry.exists) {
+      tx.set(attemptsRef, { count: used + 1, windowStart: nextWindowStart }, { merge: true });
       return { error: "That entry is missing.", code: "not-found" as const };
     }
 
     const owner = entry.get("playerId");
-    if (typeof owner === "string" && owner.length > 0 && owner !== auth.uid) {
+    const alreadyOwned = typeof owner === "string" && owner.length > 0;
+    if (alreadyOwned && owner !== auth.uid) {
+      // Counts against the hourly limit. Returning without incrementing made
+      // probing which PINs are taken free, and the taken/not-taken split leaks
+      // the valid PIN space.
+      tx.set(attemptsRef, { count: used + 1, windowStart: nextWindowStart }, { merge: true });
       return { error: "That entry is already on another account.", code: "already-exists" as const };
     }
 
-    tx.set(attemptsRef, { count: 0, windowStart: FieldValue.serverTimestamp() }, { merge: true });
+    // Reset only when this call actually transfers an unowned entry. Re-claiming
+    // a PIN the caller already owns falls through to success, so resetting on
+    // any success let eight guesses plus one self-claim repeat without bound
+    // against a 26 * 9^4 = 170,586 PIN space.
+    if (!alreadyOwned) {
+      tx.set(attemptsRef, { count: 0, windowStart: FieldValue.serverTimestamp() }, { merge: true });
+    }
     tx.update(entryRef, {
       playerId: auth.uid,
       claimedAt: FieldValue.serverTimestamp(),
@@ -150,15 +162,16 @@ export const submitPick = onCall(async (request) => {
       throw new HttpsError("failed-precondition", "This entry is knocked out.");
     }
 
+    const now = Date.now();
+    const weekKey = String(week);
     const game = games.docs[0];
     if (!game) throw new HttpsError("failed-precondition", "That team does not play this week.");
     const kickoff = game.get("kickoffAt")?.toMillis?.() ?? 0;
-    const locked = kickoff <= Date.now();
+    const locked = kickoff <= now;
     if (!admin && locked) {
       throw new HttpsError("failed-precondition", "That game has already kicked off.");
     }
 
-    const weekKey = String(week);
     const taken = asTeamMap(data.usedTeams);
     for (const pickDoc of privatePicks.docs) {
       const pickedWeek = Number(pickDoc.id);
@@ -173,6 +186,36 @@ export const submitPick = onCall(async (request) => {
     const usedInWeek = taken[team];
     if (usedInWeek !== undefined && usedInWeek !== week) {
       throw new HttpsError("already-exists", "This entry already used that team.");
+    }
+
+    // The week is locked by the pick ALREADY STANDING for it, not only by the
+    // incoming team's game. Once the standing team has kicked off its result is
+    // determined, so the pick cannot be swapped for a team that plays later in
+    // the week. Checking only the incoming kickoff let an entry pick a
+    // Sunday-early team, lose, then switch to a Monday-night team before
+    // closeWeek ran — and survive the week it had already lost.
+    if (!admin && previous && previous !== team) {
+      let previousLocked: boolean;
+      if (asPickMap(data.picks)[weekKey] === previous) {
+        // Published already, and publishLockedPicks only publishes at kickoff.
+        previousLocked = true;
+      } else {
+        const previousGames = await tx.get(db.collection("games")
+          .where("season", "==", 2026)
+          .where("week", "==", week)
+          .where("teams", "array-contains", previous)
+          .limit(1));
+        const previousKickoff = previousGames.docs[0]?.get("kickoffAt")?.toMillis?.();
+        // Fail closed: a standing pick whose kickoff cannot be established is
+        // treated as locked rather than silently swappable.
+        previousLocked = previousKickoff === undefined || previousKickoff <= now;
+      }
+      if (previousLocked) {
+        throw new HttpsError(
+          "failed-precondition",
+          `Your week ${week} pick has already kicked off and cannot be changed.`
+        );
+      }
     }
 
     if (locked) {
@@ -191,6 +234,26 @@ export const submitPick = onCall(async (request) => {
       });
       tx.delete(privateRef);
       return;
+    }
+
+    // An admin may change a pick whose game already kicked off to a team that
+    // has not, so this branch can be reached with a published pick standing for
+    // the week. Withdraw it: the public reconciliation used to live only in the
+    // `locked` branch above, so picks[week] kept the superseded team and
+    // usedTeams kept it burned for the rest of the season. publishLockedPicks
+    // is additive and never removes a stale usedTeams row, so the entry ended
+    // up with two teams mapped to one week.
+    const picks = asPickMap(data.picks);
+    const usedTeams = asTeamMap(data.usedTeams);
+    const publicPrevious = picks[weekKey];
+    if (publicPrevious && publicPrevious !== team) {
+      delete picks[weekKey];
+      if (usedTeams[publicPrevious] === week) delete usedTeams[publicPrevious];
+      tx.update(entryRef, {
+        picks,
+        usedTeams,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
 
     // Future picks stay off the public entry until kickoff.
@@ -272,7 +335,9 @@ export const syncSeasonScheduled = onSchedule({
 export const gradeWeeks = onCall(async (request) => {
   const auth = requireUser(request.auth);
   requireAdmin(auth);
-  const apply = request.data?.apply !== false;
+  // Defaulted to true, which meant a bare call rewrote terminal status and
+  // buyback history for the whole pool. Require the caller to say so.
+  const apply = request.data?.apply === true;
   return gradeImportedWeeks(apply);
 });
 

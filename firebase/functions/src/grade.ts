@@ -20,6 +20,7 @@ export interface GradeReport {
   buybacksRecorded: number;
   changed: number;
   skipped: number;
+  skippedLaterEvidence: number;
   disagreements: Array<{ label: string; stored: string; graded: string }>;
 }
 
@@ -30,6 +31,25 @@ function asPickMap(value: unknown): Record<string, string> {
     if (typeof team === "string" && team.length > 0) map[week] = team;
   }
   return map;
+}
+
+/// True when the entry carries evidence of play past the weeks this grader can
+/// see. Weeks 1-3 alone cannot describe such an entry, so the grader must not
+/// rewrite its status: an entry that won weeks 1-3 and lost week 8 would be
+/// recomputed as active and put back in the pool.
+function hasEvidencePastGradedWeeks(data: DocumentData): boolean {
+  for (const week of Object.keys(asPickMap(data.picks))) {
+    if (Number(week) > GRADE_THROUGH_WEEK) return true;
+  }
+  const storedEliminated = Number(data.eliminatedWeek);
+  if (Number.isInteger(storedEliminated) && storedEliminated > GRADE_THROUGH_WEEK) return true;
+  const storedGraded = Number(data.gradedThroughWeek);
+  if (Number.isInteger(storedGraded) && storedGraded > GRADE_THROUGH_WEEK) return true;
+  for (const row of Array.isArray(data.buybacks) ? data.buybacks : []) {
+    const week = Number((row as DocumentData)?.eliminatedWeek);
+    if (Number.isInteger(week) && week > GRADE_THROUGH_WEEK) return true;
+  }
+  return false;
 }
 
 function nextPickedWeek(picks: Record<string, string>, after: number): number | null {
@@ -82,6 +102,7 @@ export async function gradeImportedWeeks(apply: boolean): Promise<GradeReport> {
     buybacksRecorded: 0,
     changed: 0,
     skipped: 0,
+    skippedLaterEvidence: 0,
     disagreements: [],
   };
 
@@ -96,6 +117,12 @@ export async function gradeImportedWeeks(apply: boolean): Promise<GradeReport> {
 
   for (const doc of entrySnap.docs) {
     const data = doc.data() as DocumentData;
+    // The entry query is unfiltered, so this runs over the whole pool. Leave
+    // anything whose history extends past week 3 completely untouched.
+    if (hasEvidencePastGradedWeeks(data)) {
+      report.skippedLaterEvidence += 1;
+      continue;
+    }
     const picks = asPickMap(data.picks);
     let status = "active";
     let eliminatedWeek: number | null = null;
@@ -159,12 +186,27 @@ export async function gradeImportedWeeks(apply: boolean): Promise<GradeReport> {
     }
 
     if (!apply) continue;
+    // Union with what is already stored rather than replacing it. `buybacks`
+    // above is a fresh array built only from weeks 1-3 inference, so writing it
+    // directly erased rows written by recordBuyback — the only record that a
+    // player actually paid, and unrecoverable once gone. Stored rows win on a
+    // week collision because they carry recordedAt.
+    const storedBuybacks = Array.isArray(data.buybacks) ? data.buybacks : [];
+    const storedWeeks = new Set(
+      storedBuybacks
+        .map((row) => Number((row as DocumentData)?.eliminatedWeek))
+        .filter((week) => Number.isInteger(week))
+    );
+    const mergedBuybacks = [
+      ...storedBuybacks,
+      ...buybacks.filter((row) => !storedWeeks.has(row.eliminatedWeek)),
+    ];
     batch.set(doc.ref, {
       status,
       eliminatedWeek,
       buybackDeclined,
-      buybacks,
-      buybackCount: buybacks.length,
+      buybacks: mergedBuybacks,
+      buybackCount: mergedBuybacks.length,
       gradedThroughWeek: GRADE_THROUGH_WEEK,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });

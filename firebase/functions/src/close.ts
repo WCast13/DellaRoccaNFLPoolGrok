@@ -123,6 +123,23 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
     const team = privateByEntry.get(doc.id) ?? picks[String(week)] ?? "";
     const label = String(data.label ?? doc.id);
 
+    // An entry that already took its loss for this week and bought back must
+    // not be graded again. Re-closing a week is normal operation: the
+    // commissioner closes Sunday night with MNF unfinished (so those entries
+    // land in `ungraded` and closedThroughWeek does not advance), records
+    // buybacks Monday, then re-closes Tuesday to grade the MNF entries. By then
+    // status is "active" again, so the check above no longer skips them, and
+    // markLoss already wrote picks[week] — so the stale team was re-found,
+    // re-graded a loss, and the paid buyback was nullified.
+    const boughtBackThisWeek = (Array.isArray(data.buybacks) ? data.buybacks : [])
+      .some((row) => Number((row as DocumentData)?.eliminatedWeek) === week);
+    if (boughtBackThisWeek) {
+      if (report.examples.length < 12) {
+        report.examples.push(`${label}: already bought back for week ${week}`);
+      }
+      continue;
+    }
+
     if (!team) {
       report.missingPicks += 1;
       if (report.examples.length < 12) report.examples.push(`${label}: no pick`);
@@ -148,8 +165,12 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
   await flush(true);
 
   if (apply && report.ungraded === 0) {
-    await db.collection("pool").doc(String(SEASON)).set({
-      closedThroughWeek: week,
+    // Monotonic: the stepper permits any week, so a plain assignment moved the
+    // marker backwards when an earlier week was re-closed later in the season.
+    const poolRef = db.collection("pool").doc(String(SEASON));
+    const stored = Number((await poolRef.get()).get("closedThroughWeek"));
+    await poolRef.set({
+      closedThroughWeek: Number.isInteger(stored) ? Math.max(stored, week) : week,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   }

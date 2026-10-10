@@ -193,14 +193,14 @@ The client skips a document with no `label`. `ClaimedEntry` is this row in Swift
 | document id | string | PK | The PIN. One letter `A–Z` plus four digits from 1–9. `A1234` is valid. `A0123` is not |
 | `entryId` | string | FK → `entries` | The entry this PIN claims |
 
-Eight wrong attempts per account per hour. A PIN already owned by a different uid cannot be claimed again.
+Eight wrong attempts per account per hour. Every outcome that does not transfer an entry counts against that limit, including a PIN that is already on another account. A PIN already owned by a different uid cannot be claimed again; re-claiming one you already own succeeds but does not reset the counter.
 
 ### `claimAttempts` — one document per account, server only
 
 | Column | Type | Key | Notes |
 | --- | --- | --- | --- |
 | document id | string | PK, FK → auth uid | |
-| `count` | number | | Attempts inside the current hour. Resets to 0 after a successful claim |
+| `count` | number | | Attempts inside the current hour. Resets to 0 only when a claim actually transfers an unowned entry |
 | `windowStart` | timestamp | | Start of that hour |
 
 ### `players` — in the security rules, unused by the app

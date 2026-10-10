@@ -66,6 +66,15 @@ struct EntryEditorView: View {
         .onChange(of: entry.id) { _, _ in
             selectedTeam = week.flatMap { picks[$0] }
         }
+        .onChange(of: week) { _, newWeek in
+            // The open week advances on its own when the last game of the
+            // previous week kicks off, so a selection made for the old week
+            // must not carry over — the save bar would submit it for the new
+            // week and burn that team for the season. Unconditional, unlike the
+            // hook below: a changed week invalidates any selection made for the
+            // week before it. Mirrors CommissionerEntryView's stepper hook.
+            selectedTeam = newWeek.flatMap { picks[$0] }
+        }
         .onChange(of: week.flatMap { picks[$0] }) { oldSaved, newSaved in
             // Re-sync to a server-side pick change (e.g. a commissioner
             // correction) only when the user hasn't made an unsaved selection —

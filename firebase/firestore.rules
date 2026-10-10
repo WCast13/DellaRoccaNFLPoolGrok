@@ -41,6 +41,16 @@ service cloud.firestore {
       }
     }
 
+    // The rule above is scoped to a concrete /entries/{entryId} parent, which
+    // cannot authorize collectionGroup("privatePicks") — a collection-group
+    // query has no parent document to match against. Commissioners read every
+    // entry's hidden picks through that query (PlayerSession.watchAllPrivatePicks),
+    // so it needs a recursive wildcard. Admin only: a player reads their own
+    // hidden picks through the per-entry rule above, never collection-group.
+    match /{path=**}/privatePicks/{week} {
+      allow read: if isAdmin();
+    }
+
     match /entryPins/{pin} {
       allow read, write: if isAdmin();
     }

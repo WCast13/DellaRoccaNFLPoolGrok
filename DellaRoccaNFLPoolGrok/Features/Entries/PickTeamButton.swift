@@ -10,6 +10,9 @@ struct PickTeamButton: View {
     @Binding var selectedTeam: String?
     /// Allow picking a team whose game has already kicked off (commissioner).
     var allowKickedOff: Bool = false
+    /// Set when the pick already standing for this week has kicked off; holds
+    /// that team, which stays selectable as the existing pick.
+    var lockedBy: String? = nil
     /// Show the unavailable reason (e.g. "Used in week 2") beneath the chip.
     var showsReason: Bool = false
 
@@ -20,7 +23,8 @@ struct PickTeamButton: View {
             entry: entry,
             usedTeams: usedTeams,
             week: week,
-            allowKickedOff: allowKickedOff
+            allowKickedOff: allowKickedOff,
+            lockedBy: lockedBy
         )
     }
 
@@ -30,7 +34,8 @@ struct PickTeamButton: View {
             game: game,
             usedTeams: usedTeams,
             week: week,
-            allowKickedOff: allowKickedOff
+            allowKickedOff: allowKickedOff,
+            lockedBy: lockedBy
         )
     }
 
