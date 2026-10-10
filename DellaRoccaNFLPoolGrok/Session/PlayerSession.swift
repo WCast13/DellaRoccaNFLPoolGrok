@@ -14,8 +14,27 @@ struct PoolGame: Identifiable, Hashable, Sendable {
     var kickoff: Date
     var status: String
     var spreadHome: Double?
+    /// Filled once the backend sees a score. Nil before kickoff, and for a game
+    /// the feed has not scored yet.
+    var homeScore: Int?
+    var awayScore: Int?
 
     var hasKickedOff: Bool { kickoff <= Date() }
+
+    var isFinal: Bool { status == "final" }
+
+    /// "20 – 17" in away–home order, matching how the teams are laid out.
+    var scoreLabel: String? {
+        guard let homeScore, let awayScore else { return nil }
+        return "\(awayScore) – \(homeScore)"
+    }
+
+    /// The abbreviation that won, once the game is final. Nil for a tie, an
+    /// unfinished game, or a final game the feed has not scored.
+    var winner: String? {
+        guard isFinal, let homeScore, let awayScore, homeScore != awayScore else { return nil }
+        return homeScore > awayScore ? homeAbbr : awayAbbr
+    }
 
     var spreadLabel: String? {
         guard let spreadHome else { return nil }
@@ -847,5 +866,7 @@ private extension PoolGame {
         } else if let spread = data["spreadHome"] as? Double {
             self.spreadHome = spread
         }
+        self.homeScore = integer(data["homeScore"])
+        self.awayScore = integer(data["awayScore"])
     }
 }

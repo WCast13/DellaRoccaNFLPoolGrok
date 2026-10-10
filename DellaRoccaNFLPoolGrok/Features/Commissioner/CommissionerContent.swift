@@ -5,8 +5,7 @@ struct CommissionerContent: View {
     @State private var query = ""
     @State private var week = 1
     @State private var didInitWeek = false
-    @State private var preview: CloseWeekReport?
-    @State private var confirmClose = false
+    @State private var showCloseWeek = false
     @State private var commissionerEmail = ""
     @State private var showNoLogin = false
 
@@ -29,6 +28,27 @@ struct CommissionerContent: View {
             }
             .navigationTitle("Commissioner")
             .searchable(text: $query, prompt: "Entry name")
+            .toolbar {
+                if session.isAdmin {
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Button("Close week \(week)…", systemImage: "flag.checkered") {
+                                showCloseWeek = true
+                            }
+                            if let openWeek = session.openWeek, openWeek != week {
+                                Button("Go to open week \(openWeek)", systemImage: "arrow.uturn.forward") {
+                                    week = openWeek
+                                }
+                            }
+                        } label: {
+                            Label("Week actions", systemImage: "ellipsis.circle")
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showCloseWeek) {
+                CloseWeekSheet(session: session, week: week)
+            }
         }
         .onAppear {
             initializeWeek()
@@ -53,32 +73,15 @@ struct CommissionerContent: View {
 
     private var roster: some View {
         List {
-            Section("Close a week") {
-                Stepper("Week \(week)", value: $week, in: 1...18)
-                    .onChange(of: week) { _, _ in preview = nil }
-                Text("A missing pick becomes a loss once every game has kicked off. Through week 6 that entry can still buy back. After week 6 the loss is final.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Button("Preview week \(week)") {
-                    Task { preview = await session.closeWeek(week: week, apply: false) }
-                }
-                .disabled(session.isBusy)
-                if let preview, preview.week == week {
-                    Text("\(preview.wins) wins · \(preview.losses) losses · \(preview.missingPicks) missing · \(preview.ungraded) not final · \(preview.lapsedBuybacks) buybacks lapsed")
-                        .font(.subheadline)
-                    ForEach(preview.examples, id: \.self) { example in
-                        Text(example)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !preview.applied {
-                        Button("Close week \(week)", role: .destructive) {
-                            confirmClose = true
-                        }
-                        .disabled(session.isBusy)
-                    }
-                }
+            Section {
+                CommissionerWeekHeader(
+                    week: $week,
+                    scheduledWeeks: scheduledWeeks,
+                    openWeek: session.openWeek
+                )
+                WeekGamesGrid(games: session.games(in: week))
             }
+            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
 
             if trimmedQuery.isEmpty {
                 queueSection(
@@ -183,14 +186,10 @@ struct CommissionerContent: View {
                 }
             }
         }
-        .confirmationDialog("Close week \(week)?", isPresented: $confirmClose, titleVisibility: .visible) {
-            Button("Close week \(week)", role: .destructive) {
-                Task { preview = await session.closeWeek(week: week, apply: true) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Alive entries with no pick, or with a final loss, are knocked out — buyable back through week 6. Entries that never completed a buyback for this week are out for the season and owe nothing.")
-        }
+    }
+
+    private var scheduledWeeks: [Int] {
+        Array(Set(session.games.map(\.week))).sorted()
     }
 
     private var trimmedQuery: String {
