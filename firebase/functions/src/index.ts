@@ -451,7 +451,8 @@ async function syncSeasonFromSecrets(includeOdds: boolean) {
   // later kickoff could have its pick published early.
   const result = await runSeasonSync(apiSportsKey.value(), includeOdds ? oddsApiKey.value() : "");
   const publishedPicks = await publishLockedPicks();
-  const graded = await gradeClosedWeeks();
+  const run = await gradeClosedWeeks();
+  const graded = run.reports;
   for (const report of graded) {
     console.log(
       `Graded week ${report.week}: ${report.wins} wins, ${report.losses} losses, ` +
@@ -459,9 +460,24 @@ async function syncSeasonFromSecrets(includeOdds: boolean) {
       `${report.lapsedBuybacks} buybacks lapsed, ${report.updated} updated`
     );
   }
+  // Weeks grade in order and the loop stops at the first with an unfinished
+  // game, so the mark after the run is the last clean week graded.
+  const closedThroughWeek = graded
+    .filter((report) => report.ungraded === 0)
+    .reduce((mark, report) => Math.max(mark, report.week), run.closedThroughWeek);
+  // One line every run, whether or not anything graded. A quiet run is
+  // otherwise invisible in the logs, and "ran with nothing to grade" has to
+  // be distinguishable from "did not run".
+  console.log(
+    `syncSeason run: ${result.games} games, ${result.spreads} spreads, ` +
+    `${publishedPicks} picks published, ` +
+    `closedThroughWeek ${run.closedThroughWeek} -> ${closedThroughWeek}, ` +
+    `graded [${graded.map((report) => report.week).join(", ") || "none"}], ` +
+    `unmatched teams ${result.unmatchedTeams.length}`
+  );
   // The full reports go back to the caller so the app's "grade now" can show
   // exactly what a run did, per week, instead of only logging it.
-  return { ...result, publishedPicks, graded };
+  return { ...result, publishedPicks, graded, closedThroughWeek };
 }
 
 // The hourly job on demand. The commissioner tab's "Sync scores and grade now"

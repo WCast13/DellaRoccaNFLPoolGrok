@@ -64,11 +64,18 @@ function outcome(team: string, game: StoredGame | undefined): "win" | "loss" | "
 /// strictly in order and stop at the first that still has a game to play —
 /// closedThroughWeek is a single high-water mark, so grading week 6 ahead of
 /// a postponed week-5 game would mark 5 as done and never return to it.
-export async function gradeClosedWeeks(now = Date.now()): Promise<CloseWeekReport[]> {
+export interface GradeRunSummary {
+  /// The high-water mark as it stood when the run started.
+  closedThroughWeek: number;
+  reports: CloseWeekReport[];
+}
+
+export async function gradeClosedWeeks(now = Date.now()): Promise<GradeRunSummary> {
   const db = getFirestore();
   const pool = await db.collection("pool").doc(String(SEASON)).get();
-  const closedThrough = Number(pool.get("closedThroughWeek"));
-  const firstOpen = (Number.isInteger(closedThrough) ? closedThrough : 0) + 1;
+  const stored = Number(pool.get("closedThroughWeek"));
+  const closedThroughWeek = Number.isInteger(stored) ? stored : 0;
+  const firstOpen = closedThroughWeek + 1;
 
   const games = await db.collection("games").where("season", "==", SEASON).get();
   const lastKickoffByWeek = new Map<number, number>();
@@ -84,14 +91,19 @@ export async function gradeClosedWeeks(now = Date.now()): Promise<CloseWeekRepor
     const lastKickoff = lastKickoffByWeek.get(week);
     if (lastKickoff === undefined || lastKickoff > now) break;
     try {
-      reports.push(await closePoolWeek(week, true, now));
+      const report = await closePoolWeek(week, true, now);
+      reports.push(report);
+      // A week with a game that has kicked off but is not final yet holds the
+      // line. Moving on would let a later, clean week advance closedThroughWeek
+      // past this one, and the high-water mark never comes back for it.
+      if (report.ungraded > 0) break;
     } catch (error) {
       // Leave the rest for the next run rather than failing the whole sync.
       console.error(`gradeClosedWeeks: week ${week} failed`, error);
       break;
     }
   }
-  return reports;
+  return { closedThroughWeek, reports };
 }
 
 export async function closePoolWeek(week: number, apply: boolean, now = Date.now()): Promise<CloseWeekReport> {
