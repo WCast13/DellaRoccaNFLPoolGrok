@@ -13,7 +13,7 @@ struct CommissionerView: View {
 }
 
 #if DEBUG
-#Preview("Queues") {
+#Preview("Commissioner") {
     CommissionerView(session: PreviewData.commissioner())
 }
 

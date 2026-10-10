@@ -14,8 +14,27 @@ struct PoolGame: Identifiable, Hashable, Sendable {
     var kickoff: Date
     var status: String
     var spreadHome: Double?
+    /// Filled once the backend sees a score. Nil before kickoff, and for a game
+    /// the feed has not scored yet.
+    var homeScore: Int?
+    var awayScore: Int?
 
     var hasKickedOff: Bool { kickoff <= Date() }
+
+    var isFinal: Bool { status == "final" }
+
+    /// "20 – 17" in away–home order, matching how the teams are laid out.
+    var scoreLabel: String? {
+        guard let homeScore, let awayScore else { return nil }
+        return "\(awayScore) – \(homeScore)"
+    }
+
+    /// The abbreviation that won, once the game is final. Nil for a tie, an
+    /// unfinished game, or a final game the feed has not scored.
+    var winner: String? {
+        guard isFinal, let homeScore, let awayScore, homeScore != awayScore else { return nil }
+        return homeScore > awayScore ? homeAbbr : awayAbbr
+    }
 
     var spreadLabel: String? {
         guard let spreadHome else { return nil }
@@ -25,19 +44,6 @@ struct PoolGame: Identifiable, Hashable, Sendable {
             : String(format: "%+.1f", rounded)
         return "\(homeAbbr) \(text)"
     }
-}
-
-struct CloseWeekReport: Hashable, Sendable {
-    var week: Int
-    var missingPicks: Int
-    var losses: Int
-    var wins: Int
-    var ungraded: Int
-    var updated: Int
-    /// Entries that never completed a buyback by the decision week's deadline.
-    var lapsedBuybacks: Int
-    var applied: Bool
-    var examples: [String]
 }
 
 /// The player's reversible choice after a knockout in weeks 1-6. Written by the
@@ -578,56 +584,6 @@ final class PlayerSession {
         await callCommissioner("declineBuyback", ["entryId": entryID], success: "Buyback declined. This entry is out.")
     }
 
-    func closeWeek(week: Int, apply: Bool) async -> CloseWeekReport? {
-        if isPreview {
-            let report = CloseWeekReport(
-                week: week,
-                missingPicks: 2,
-                losses: 1,
-                wins: 4,
-                ungraded: apply ? 0 : 1,
-                updated: apply ? 3 : 0,
-                lapsedBuybacks: 1,
-                applied: apply,
-                examples: ["Will Castellano has no pick.", "Pat Buyer lost with Bengals."]
-            )
-            notice = apply
-                ? "Week \(week) closed. \(report.updated) entries updated."
-                : "Week \(week) preview: \(report.missingPicks) missing picks, \(report.losses) losses, \(report.wins) wins."
-            errorMessage = nil
-            return report
-        }
-        isBusy = true
-        defer { isBusy = false }
-        do {
-            let result = try await functionsClient().httpsCallable("closeWeek").call([
-                "week": week,
-                "apply": apply,
-            ])
-            let data = result.data as? [String: Any] ?? [:]
-            let report = CloseWeekReport(
-                week: integer(data["week"]) ?? week,
-                missingPicks: integer(data["missingPicks"]) ?? 0,
-                losses: integer(data["losses"]) ?? 0,
-                wins: integer(data["wins"]) ?? 0,
-                ungraded: integer(data["ungraded"]) ?? 0,
-                updated: integer(data["updated"]) ?? 0,
-                lapsedBuybacks: integer(data["lapsedBuybacks"]) ?? 0,
-                applied: data["applied"] as? Bool ?? apply,
-                examples: data["examples"] as? [String] ?? []
-            )
-            notice = apply
-                ? "Week \(week) closed. \(report.updated) entries updated."
-                : "Week \(week) preview: \(report.missingPicks) missing picks, \(report.losses) losses, \(report.wins) wins."
-            errorMessage = nil
-            return report
-        } catch {
-            errorMessage = error.localizedDescription
-            notice = nil
-            return nil
-        }
-    }
-
     func addCommissionerEmail(_ email: String) async {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         await callCommissioner("addCommissionerEmail", ["email": trimmed], success: "\(trimmed) can become a commissioner after signing in.")
@@ -847,5 +803,7 @@ private extension PoolGame {
         } else if let spread = data["spreadHome"] as? Double {
             self.spreadHome = spread
         }
+        self.homeScore = integer(data["homeScore"])
+        self.awayScore = integer(data["awayScore"])
     }
 }

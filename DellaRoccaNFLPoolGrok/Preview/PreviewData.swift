@@ -205,17 +205,24 @@ enum PreviewData {
         home: String,
         daysAgo: Double = 0,
         daysAhead: Double = 0,
-        spread: Double?
+        spread: Double?,
+        homeScore: Int? = nil,
+        awayScore: Int? = nil
     ) -> PoolGame {
         let seconds = (daysAhead - daysAgo) * 24 * 60 * 60
+        let isFinal = seconds <= 0
         return PoolGame(
             id: id,
             week: week,
             homeAbbr: home,
             awayAbbr: away,
             kickoff: Date().addingTimeInterval(seconds),
-            status: seconds <= 0 ? "final" : "scheduled",
-            spreadHome: spread
+            status: isFinal ? "final" : "scheduled",
+            spreadHome: spread,
+            // A finished fixture gets a plausible score so the commissioner
+            // grid has something to render in both states.
+            homeScore: homeScore ?? (isFinal ? 24 : nil),
+            awayScore: awayScore ?? (isFinal ? 17 : nil)
         )
     }
 }

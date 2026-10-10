@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An iOS/SwiftUI NFL survivor pool app for a private pool. One entry picks one NFL team per week and may never reuse a team; a wrong pick in weeks 1–6 can be bought back by the commissioner. Season is hardcoded to **2026**, weeks 1–18.
+An iOS/SwiftUI NFL survivor pool app for a private pool. One entry picks one NFL team per week and may never reuse a team; after a wrong pick in weeks 1–6 the player can buy back in, confirmed by making the next week's pick. Season is hardcoded to **2026**, weeks 1–18.
 
 Two codebases in one repo: the SwiftUI client (`DellaRoccaNFLPoolGrok/`) and the Firebase backend (`firebase/`).
 
@@ -58,7 +58,7 @@ Adding a mutation means adding a callable in `firebase/functions/src/index.ts` a
 
 ### Preview mode is a parallel implementation
 
-`PlayerSession` has an `isPreview` flag and a `#if DEBUG init(preview:)` taking a `PreviewSample`. **Every mutating method branches on `isPreview` and fakes the mutation locally** instead of calling Firebase — see `claim`, `submitPick`, `signOut`, `closeWeek`, `callCommissioner`.
+`PlayerSession` has an `isPreview` flag and a `#if DEBUG init(preview:)` taking a `PreviewSample`. **Every mutating method branches on `isPreview` and fakes the mutation locally** instead of calling Firebase — see `claim`, `submitPick`, `signOut`, `electBuyback`, `callCommissioner`.
 
 If you add a session method that touches Firebase, you must add an `if isPreview { ... }` branch or every `#Preview` using it will hang or crash. Fixtures live in `Preview/PreviewData.swift` (`signedOut()`, `loading()`, `claim()`, `player()`, `commissioner()`). Previews are the de facto test suite here — add them for new views, and keep the existing ones compiling.
 

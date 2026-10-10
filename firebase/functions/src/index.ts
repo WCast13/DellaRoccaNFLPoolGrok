@@ -5,7 +5,7 @@ import { defineSecret } from "firebase-functions/params";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { closePoolWeek } from "./close";
+import { closePoolWeek, gradeClosedWeeks } from "./close";
 import { gradeImportedWeeks } from "./grade";
 import { publishLockedPicks } from "./picks";
 import { runSeasonSync } from "./sports";
@@ -446,9 +446,20 @@ export const recordBuyback = onCall(async (request) => {
 const ODDS_REFRESH_MS = 12 * 60 * 60 * 1000;
 
 async function syncSeasonFromSecrets(includeOdds: boolean) {
-  const publishedPicks = await publishLockedPicks();
+  // Scores and kickoffs first, then publish against them, then grade. The old
+  // order published picks before refreshing the schedule, so a game moved to a
+  // later kickoff could have its pick published early.
   const result = await runSeasonSync(apiSportsKey.value(), includeOdds ? oddsApiKey.value() : "");
-  return { ...result, publishedPicks };
+  const publishedPicks = await publishLockedPicks();
+  const graded = await gradeClosedWeeks();
+  for (const report of graded) {
+    console.log(
+      `Graded week ${report.week}: ${report.wins} wins, ${report.losses} losses, ` +
+      `${report.missingPicks} missing, ${report.ungraded} not final, ` +
+      `${report.lapsedBuybacks} buybacks lapsed, ${report.updated} updated`
+    );
+  }
+  return { ...result, publishedPicks, gradedWeeks: graded.map((report) => report.week) };
 }
 
 export const syncSeason = onCall({ secrets: [apiSportsKey, oddsApiKey] }, async (request) => {
@@ -547,6 +558,9 @@ export const addCommissionerEmail = onCall(async (request) => {
   return { email };
 });
 
+// Operational trigger only. The hourly sync grades weeks itself via
+// gradeClosedWeeks; this remains so a commissioner can force a run from the
+// Firebase console or CLI if the schedule misfires. Nothing in the app calls it.
 export const closeWeek = onCall({ timeoutSeconds: 120 }, async (request) => {
   const auth = requireUser(request.auth);
   requireAdmin(auth);
