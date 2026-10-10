@@ -18,7 +18,7 @@ enum CommissionerEntryFilter: String, CaseIterable, Identifiable {
 
     func matches(_ entry: ClaimedEntry) -> Bool {
         switch self {
-        case .active: return entry.status != .eliminated
+        case .active: return entry.status == .active || entry.status == .pendingBuyback
         case .eliminated: return entry.status == .eliminated
         }
     }

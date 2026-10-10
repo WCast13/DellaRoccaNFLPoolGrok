@@ -188,17 +188,35 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
     const eliminatedWeek = Number(data.eliminatedWeek);
     const decisionWeek = Number.isInteger(eliminatedWeek) ? eliminatedWeek + 1 : 0;
     let confirmFields: DocumentData | null = null;
+    let revived = false;
     if (decisionWeek === week && data.buybackDeclined !== true) {
       const existing = rowForWeek(eliminatedWeek);
-      // A confirmed row means an earlier close already resolved this decision.
+      // An active entry with a confirmed row was resolved by an earlier close.
       // Without the check, a re-close would see the cleared election and lapse
-      // an entry that had legitimately bought back and picked.
-      const alreadyResolved = existing !== undefined && existing.provisional !== true;
+      // an entry that had legitimately bought back and picked. A knocked-out
+      // entry is never "resolved", whatever its rows say: it decides here.
+      const alreadyResolved =
+        data.status === "active" && existing !== undefined && existing.provisional !== true;
       if (!alreadyResolved) {
-        if (data.buybackElection === "in" && team) {
-          // Held, not written: merged into this entry's single write below so
-          // the same document is never written twice in one batch.
-          confirmFields = confirmedBuybackFields(buybackRows, eliminatedWeek);
+        if (team) {
+          // The pool rule: a pick for the decision week IS the buyback, whether
+          // the player elected in the app or a commissioner entered the pick.
+          // Requiring the election as well lapsed 138 entries with week-4
+          // picks on file on 2026-10-10, because those picks predated the
+          // elect flow. Held, not written: merged into this entry's single
+          // write below so the same document is never written twice in one
+          // batch. A pick for a knocked-out entry revives it here, and the
+          // pick then grades like any other.
+          confirmFields = confirmedBuybackFields(buybackRows, eliminatedWeek, week);
+          if (data.status !== "active") {
+            confirmFields = {
+              ...confirmFields,
+              status: "active",
+              eliminatedWeek: null,
+              buybackDeclined: false,
+            };
+            revived = true;
+          }
         } else {
           if (report.examples.length < 12) {
             report.examples.push(
@@ -213,7 +231,7 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
       }
     }
 
-    if (data.status !== "active") continue;
+    if (data.status !== "active" && !revived) continue;
 
     // An entry that already took its loss for THIS week and bought back must
     // not be graded again. Re-closing a week is normal operation: the
@@ -298,19 +316,29 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
     await flush();
   }
 
-  /// Fields that confirm an elected buyback: drops the provisional marker so a
-  /// later close cannot withdraw it, and clears the election so the next
+  /// Fields that confirm a buyback: drops the provisional marker so a later
+  /// close cannot withdraw it, adds the row when nothing elected it (a pick
+  /// entered for a knocked-out entry), and clears the election so the next
   /// knockout starts clean. buybackUnpaid is left alone for collection.
-  function confirmedBuybackFields(rows: unknown[], eliminatedWeek: number): DocumentData {
+  function confirmedBuybackFields(
+    rows: unknown[],
+    eliminatedWeek: number,
+    pickedWeek: number
+  ): DocumentData {
+    const confirmedAt = new Date().toISOString();
+    let found = false;
     const buybacks = rows.map((row) => {
       const typed = row as DocumentData;
-      if (Number(typed?.eliminatedWeek) === eliminatedWeek && typed?.provisional === true) {
-        const confirmed: DocumentData = { ...typed, confirmedAt: new Date().toISOString() };
-        delete confirmed.provisional;
-        return confirmed;
-      }
-      return row;
+      if (Number(typed?.eliminatedWeek) !== eliminatedWeek) return row;
+      found = true;
+      if (typed?.provisional !== true) return row;
+      const confirmed: DocumentData = { ...typed, boughtBackBeforeWeek: pickedWeek, confirmedAt };
+      delete confirmed.provisional;
+      return confirmed;
     });
+    if (!found) {
+      buybacks.push({ eliminatedWeek, boughtBackBeforeWeek: pickedWeek, confirmedAt });
+    }
     return {
       buybackElection: FieldValue.delete(),
       buybacks,
