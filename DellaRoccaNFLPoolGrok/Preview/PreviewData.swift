@@ -93,6 +93,23 @@ enum PreviewData {
         buybackUnpaid: true
     )
 
+    /// Commissioner with every queue empty: nobody missing a pick, no buybacks
+    /// pending and no fees owed, so the header and grid are what you see.
+    static func commissionerQuietWeek() -> PlayerSession {
+        PlayerSession(preview: PlayerSession.PreviewSample(
+            userID: "preview-commissioner",
+            accountLabel: "wcastellano13@gmail.com",
+            entries: [will, casa],
+            games: games,
+            privatePicks: privatePicks,
+            standings: standings.filter { $0.status == .active && $0.isClaimed },
+            standingsLoaded: true,
+            isAdmin: true,
+            privatePicksReady: true,
+            teamLogos: logos
+        ))
+    }
+
     static let will = entry(
         id: "will-castellano",
         label: "Will Castellano",

@@ -46,9 +46,9 @@ struct CommissionerContent: View {
                     }
                 }
             }
-            .sheet(isPresented: $showCloseWeek) {
-                CloseWeekSheet(session: session, week: week)
-            }
+//            .sheet(isPresented: $showCloseWeek) {
+//                CloseWeekSheet(session: session, week: week)
+//            }
         }
         .onAppear {
             initializeWeek()
@@ -80,6 +80,19 @@ struct CommissionerContent: View {
                     openWeek: session.openWeek
                 )
                 WeekGamesGrid(games: session.games(in: week))
+            }
+            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+
+            // The season so far, entries down and weeks across. Honors the
+            // search field so a name filters the board rather than replacing it.
+            Section {
+                CommissionerEntriesGrid(
+                    session: session,
+                    entries: filtered,
+                    throughWeek: week
+                )
+            } header: {
+                Text(trimmedQuery.isEmpty ? "Picks through week \(week)" : "Matching entries")
             }
             .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
 
@@ -149,18 +162,6 @@ struct CommissionerContent: View {
                         }
                     }
                     .buttonStyle(.plain)
-                }
-            } else {
-                Section("Matching entries") {
-                    if filtered.isEmpty {
-                        Text("No entry matches that name.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(filtered) { entry in
-                            entryLink(entry)
-                        }
-                    }
                 }
             }
 
@@ -285,3 +286,4 @@ struct CommissionerContent: View {
         StatusMessageText(notice: session.notice, errorMessage: session.errorMessage)
     }
 }
+

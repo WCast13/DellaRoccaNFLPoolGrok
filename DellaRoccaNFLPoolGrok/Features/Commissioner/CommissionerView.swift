@@ -13,8 +13,14 @@ struct CommissionerView: View {
 }
 
 #if DEBUG
-#Preview("Queues") {
+#Preview("Commissioner") {
     CommissionerView(session: PreviewData.commissioner())
+}
+
+/// The week header, slate and entries grid with nothing to act on, so the
+/// layout can be judged without queue noise.
+#Preview("Quiet week") {
+    CommissionerView(session: PreviewData.commissionerQuietWeek())
 }
 
 #Preview("Sign in") {
