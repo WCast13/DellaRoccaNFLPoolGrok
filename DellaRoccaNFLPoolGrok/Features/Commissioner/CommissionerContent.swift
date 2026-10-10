@@ -5,7 +5,6 @@ struct CommissionerContent: View {
     @State private var query = ""
     @State private var week = 1
     @State private var didInitWeek = false
-    @State private var showCloseWeek = false
     @State private var commissionerEmail = ""
 
     private var filtered: [ClaimedEntry] {
@@ -27,27 +26,6 @@ struct CommissionerContent: View {
             }
             .navigationTitle("Commissioner")
             .searchable(text: $query, prompt: "Entry name")
-            .toolbar {
-                if session.isAdmin {
-                    ToolbarItem(placement: .primaryAction) {
-                        Menu {
-                            Button("Close week \(week)…", systemImage: "flag.checkered") {
-                                showCloseWeek = true
-                            }
-                            if let openWeek = session.openWeek, openWeek != week {
-                                Button("Go to open week \(openWeek)", systemImage: "arrow.uturn.forward") {
-                                    week = openWeek
-                                }
-                            }
-                        } label: {
-                            Label("Week actions", systemImage: "ellipsis.circle")
-                        }
-                    }
-                }
-            }
-//            .sheet(isPresented: $showCloseWeek) {
-//                CloseWeekSheet(session: session, week: week)
-//            }
         }
         .onAppear {
             initializeWeek()

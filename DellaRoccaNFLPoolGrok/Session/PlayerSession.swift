@@ -46,19 +46,6 @@ struct PoolGame: Identifiable, Hashable, Sendable {
     }
 }
 
-struct CloseWeekReport: Hashable, Sendable {
-    var week: Int
-    var missingPicks: Int
-    var losses: Int
-    var wins: Int
-    var ungraded: Int
-    var updated: Int
-    /// Entries that never completed a buyback by the decision week's deadline.
-    var lapsedBuybacks: Int
-    var applied: Bool
-    var examples: [String]
-}
-
 /// The player's reversible choice after a knockout in weeks 1-6. Written by the
 /// `electBuyback` callable; cleared by the backend once the decision resolves.
 enum BuybackElection: String, Hashable, Sendable {
@@ -595,56 +582,6 @@ final class PlayerSession {
 
     func declineBuyback(entryID: String) async {
         await callCommissioner("declineBuyback", ["entryId": entryID], success: "Buyback declined. This entry is out.")
-    }
-
-    func closeWeek(week: Int, apply: Bool) async -> CloseWeekReport? {
-        if isPreview {
-            let report = CloseWeekReport(
-                week: week,
-                missingPicks: 2,
-                losses: 1,
-                wins: 4,
-                ungraded: apply ? 0 : 1,
-                updated: apply ? 3 : 0,
-                lapsedBuybacks: 1,
-                applied: apply,
-                examples: ["Will Castellano has no pick.", "Pat Buyer lost with Bengals."]
-            )
-            notice = apply
-                ? "Week \(week) closed. \(report.updated) entries updated."
-                : "Week \(week) preview: \(report.missingPicks) missing picks, \(report.losses) losses, \(report.wins) wins."
-            errorMessage = nil
-            return report
-        }
-        isBusy = true
-        defer { isBusy = false }
-        do {
-            let result = try await functionsClient().httpsCallable("closeWeek").call([
-                "week": week,
-                "apply": apply,
-            ])
-            let data = result.data as? [String: Any] ?? [:]
-            let report = CloseWeekReport(
-                week: integer(data["week"]) ?? week,
-                missingPicks: integer(data["missingPicks"]) ?? 0,
-                losses: integer(data["losses"]) ?? 0,
-                wins: integer(data["wins"]) ?? 0,
-                ungraded: integer(data["ungraded"]) ?? 0,
-                updated: integer(data["updated"]) ?? 0,
-                lapsedBuybacks: integer(data["lapsedBuybacks"]) ?? 0,
-                applied: data["applied"] as? Bool ?? apply,
-                examples: data["examples"] as? [String] ?? []
-            )
-            notice = apply
-                ? "Week \(week) closed. \(report.updated) entries updated."
-                : "Week \(week) preview: \(report.missingPicks) missing picks, \(report.losses) losses, \(report.wins) wins."
-            errorMessage = nil
-            return report
-        } catch {
-            errorMessage = error.localizedDescription
-            notice = nil
-            return nil
-        }
     }
 
     func addCommissionerEmail(_ email: String) async {

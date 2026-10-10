@@ -55,6 +55,45 @@ function outcome(team: string, game: StoredGame | undefined): "win" | "loss" | "
   return teamScore > opponentScore ? "win" : "loss";
 }
 
+/// Grades every week whose games have all kicked off and that the pool has not
+/// yet closed through, in order. This is what the hourly sync calls; there is
+/// no manual close-week step.
+///
+/// Idempotent: closePoolWeek skips entries already graded, and a week with a
+/// game still pending is re-run each hour until it is final. Weeks grade
+/// strictly in order and stop at the first that still has a game to play —
+/// closedThroughWeek is a single high-water mark, so grading week 6 ahead of
+/// a postponed week-5 game would mark 5 as done and never return to it.
+export async function gradeClosedWeeks(now = Date.now()): Promise<CloseWeekReport[]> {
+  const db = getFirestore();
+  const pool = await db.collection("pool").doc(String(SEASON)).get();
+  const closedThrough = Number(pool.get("closedThroughWeek"));
+  const firstOpen = (Number.isInteger(closedThrough) ? closedThrough : 0) + 1;
+
+  const games = await db.collection("games").where("season", "==", SEASON).get();
+  const lastKickoffByWeek = new Map<number, number>();
+  for (const doc of games.docs) {
+    const week = Number(doc.get("week"));
+    const kickoff = doc.get("kickoffAt")?.toMillis?.() ?? 0;
+    if (!Number.isInteger(week) || kickoff <= 0) continue;
+    lastKickoffByWeek.set(week, Math.max(lastKickoffByWeek.get(week) ?? 0, kickoff));
+  }
+
+  const reports: CloseWeekReport[] = [];
+  for (let week = firstOpen; week <= 18; week += 1) {
+    const lastKickoff = lastKickoffByWeek.get(week);
+    if (lastKickoff === undefined || lastKickoff > now) break;
+    try {
+      reports.push(await closePoolWeek(week, true, now));
+    } catch (error) {
+      // Leave the rest for the next run rather than failing the whole sync.
+      console.error(`gradeClosedWeeks: week ${week} failed`, error);
+      break;
+    }
+  }
+  return reports;
+}
+
 export async function closePoolWeek(week: number, apply: boolean, now = Date.now()): Promise<CloseWeekReport> {
   const db = getFirestore();
   if (apply) await publishLockedPicks(now);
