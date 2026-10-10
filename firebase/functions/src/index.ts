@@ -459,10 +459,18 @@ async function syncSeasonFromSecrets(includeOdds: boolean) {
       `${report.lapsedBuybacks} buybacks lapsed, ${report.updated} updated`
     );
   }
-  return { ...result, publishedPicks, gradedWeeks: graded.map((report) => report.week) };
+  // The full reports go back to the caller so the app's "grade now" can show
+  // exactly what a run did, per week, instead of only logging it.
+  return { ...result, publishedPicks, graded };
 }
 
-export const syncSeason = onCall({ secrets: [apiSportsKey, oddsApiKey] }, async (request) => {
+// The hourly job on demand. The commissioner tab's "Sync scores and grade now"
+// calls this, so a run can be tested without waiting for the schedule; it is
+// the same code path, so what it shows is what the next tick would have done.
+// 300s: refreshing scores and grading several weeks in one run can exceed the
+// 60s default, and the scheduled variant gets the same budget for the same
+// reason.
+export const syncSeason = onCall({ secrets: [apiSportsKey, oddsApiKey], timeoutSeconds: 300 }, async (request) => {
   const auth = requireUser(request.auth);
   requireAdmin(auth);
   return syncSeasonFromSecrets(true);
@@ -471,6 +479,7 @@ export const syncSeason = onCall({ secrets: [apiSportsKey, oddsApiKey] }, async 
 export const syncSeasonScheduled = onSchedule({
   schedule: "every 60 minutes",
   secrets: [apiSportsKey, oddsApiKey],
+  timeoutSeconds: 300,
 }, async () => {
   const pool = await db.collection("pool").doc("2026").get();
   const lastOdds = pool.get("oddsSyncedAt")?.toMillis?.() ?? 0;

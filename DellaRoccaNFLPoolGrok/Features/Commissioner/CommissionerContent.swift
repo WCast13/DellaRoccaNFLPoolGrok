@@ -73,6 +73,8 @@ struct CommissionerContent: View {
             }
             .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
 
+            GradeNowSection(session: session)
+
             Section("Add a commissioner") {
                 TextField("Apple ID email", text: $commissionerEmail)
                     #if os(iOS) || os(visionOS)

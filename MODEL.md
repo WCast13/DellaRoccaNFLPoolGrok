@@ -262,7 +262,7 @@ Commissioner access is the Auth custom claim `admin`, not this row.
 | `declineBuyback` | Admin | `pendingBuyback` → `eliminated` |
 | `closeWeek` | Admin | Operational trigger only — forces the same grading the hourly sync runs. Nothing in the app calls it. `apply: true` writes; otherwise it is a dry run |
 | `gradeWeeks` | Admin | Regrades imported weeks 1–3 from public `picks`. `apply` defaults to true |
-| `syncSeason` | Admin | Teams, games, scores, and spreads |
+| `syncSeason` | Admin | The hourly job on demand: teams, games, scores and spreads, then publishes locked picks, then grades every ready week. Returns the grading reports. The commissioner tab's "Sync scores and grade now" button calls it |
 | `syncSeasonScheduled` | Hourly | Same sync. Spreads refresh only if `oddsSyncedAt` is older than 12 hours. Then publishes locked picks, then grades every week whose games have all kicked off (`gradeClosedWeeks`) |
 | `syncCommissionerClaim` | Signed in | Grants the admin claim when the email is allowed |
 | `addCommissionerEmail` | Admin | Adds an email to `pool/2026`, and flags that user's entries `isCommissioner` if they have an account |
