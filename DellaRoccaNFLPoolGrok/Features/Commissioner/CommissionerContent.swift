@@ -5,7 +5,6 @@ struct CommissionerContent: View {
     @State private var query = ""
     @State private var week = 1
     @State private var didInitWeek = false
-    @State private var commissionerEmail = ""
 
     private var filtered: [ClaimedEntry] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -17,7 +16,7 @@ struct CommissionerContent: View {
         NavigationStack {
             Group {
                 if !session.isSignedIn {
-                    message("Sign in with Apple on My Entries. Commissioner tools appear on Ralph's and Will's accounts.")
+                    message("Sign in with Apple on My Entries. Commissioner tools appear on accounts a commissioner has allowed.")
                 } else if !session.isAdmin {
                     message("\(session.accountLabel) is not a commissioner yet. A commissioner can add this Apple account's email.")
                 } else {
@@ -75,21 +74,7 @@ struct CommissionerContent: View {
 
             GradeNowSection(session: session)
 
-            Section("Add a commissioner") {
-                TextField("Apple ID email", text: $commissionerEmail)
-                    #if os(iOS) || os(visionOS)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
-                    #endif
-                    .autocorrectionDisabled()
-                Button("Allow this email") {
-                    Task {
-                        await session.addCommissionerEmail(commissionerEmail)
-                        if session.errorMessage == nil { commissionerEmail = "" }
-                    }
-                }
-                .disabled(session.isBusy || !commissionerEmail.contains("@"))
-            }
+            CommissionerAccessSection(session: session)
 
             if session.notice != nil || session.errorMessage != nil {
                 Section {

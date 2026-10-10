@@ -542,19 +542,95 @@ async function commissionerEmails(): Promise<Set<string>> {
   return allowed;
 }
 
+async function setAdminClaim(uid: string, admin: boolean): Promise<void> {
+  const user = await getAuth().getUser(uid);
+  const claims: Record<string, unknown> = { ...(user.customClaims ?? {}) };
+  if (admin) claims.admin = true;
+  else delete claims.admin;
+  await getAuth().setCustomUserClaims(uid, claims);
+}
+
+function isBuiltInCommissioner(email: string): boolean {
+  return BOOTSTRAP_COMMISSIONER_EMAILS.some((item) => item.toLowerCase() === email);
+}
+
+// The allowlist is the source of truth in both directions. Granting was
+// already here; revoking was not — a removed email kept its claim forever,
+// so "remove a commissioner" meant editing the Firebase console. The caller's
+// current ID token still carries the old claim until it refreshes, which the
+// app forces when this reports `revoked`.
 export const syncCommissionerClaim = onCall(async (request) => {
   const auth = requireUser(request.auth);
   const email = String(auth.token.email ?? "").trim().toLowerCase();
   const allowed = await commissionerEmails();
+  const hasClaim = auth.token.admin === true;
   if (!email || !allowed.has(email)) {
-    return { admin: auth.token.admin === true };
+    if (hasClaim) {
+      await setAdminClaim(auth.uid, false);
+      await setEntriesCommissionerFlag(auth.uid, false);
+      return { admin: false, revoked: true };
+    }
+    return { admin: false };
   }
-  if (auth.token.admin !== true) {
-    const user = await getAuth().getUser(auth.uid);
-    await getAuth().setCustomUserClaims(auth.uid, { ...(user.customClaims ?? {}), admin: true });
-  }
+  if (!hasClaim) await setAdminClaim(auth.uid, true);
   await setEntriesCommissionerFlag(auth.uid, true);
   return { admin: true };
+});
+
+export const removeCommissionerEmail = onCall(async (request) => {
+  const auth = requireUser(request.auth);
+  requireAdmin(auth);
+  const email = String(request.data?.email ?? "").trim().toLowerCase();
+  if (!email) throw new HttpsError("invalid-argument", "Choose an email.");
+  if (isBuiltInCommissioner(email)) {
+    throw new HttpsError("failed-precondition", "That commissioner is built in and cannot be removed from the app.");
+  }
+  const ref = db.collection("pool").doc("2026");
+  await db.runTransaction(async (tx) => {
+    const pool = await tx.get(ref);
+    const current = Array.isArray(pool.get("commissionerEmails")) ? pool.get("commissionerEmails") : [];
+    const emails = current.filter(
+      (item: unknown): item is string => typeof item === "string" && item.trim().toLowerCase() !== email
+    );
+    tx.set(ref, { commissionerEmails: emails }, { merge: true });
+  });
+  // Revoke now if they have an account, rather than waiting for their next
+  // sign-in. Their current ID token keeps the claim until it refreshes — up
+  // to an hour — which is the standard custom-claim window.
+  let revoked = false;
+  try {
+    const user = await getAuth().getUserByEmail(email);
+    if (user.customClaims?.admin === true) {
+      await setAdminClaim(user.uid, false);
+      revoked = true;
+    }
+    await setEntriesCommissionerFlag(user.uid, false);
+  } catch {
+    // No account for that email; removing it from the list is enough.
+  }
+  return { email, revoked };
+});
+
+// Who has access, and whether it is in effect. A callable rather than a
+// listener because the claim lives in Auth, which no Firestore listener can
+// see; the allowlist alone would say who is allowed, not who is currently in.
+export const listCommissioners = onCall(async (request) => {
+  const auth = requireUser(request.auth);
+  requireAdmin(auth);
+  const allowed = await commissionerEmails();
+  const rows = await Promise.all([...allowed].sort().map(async (email) => {
+    let signedIn = false;
+    let hasClaim = false;
+    try {
+      const user = await getAuth().getUserByEmail(email);
+      signedIn = true;
+      hasClaim = user.customClaims?.admin === true;
+    } catch {
+      // Never signed in with this email.
+    }
+    return { email, builtIn: isBuiltInCommissioner(email), signedIn, hasClaim };
+  }));
+  return { commissioners: rows };
 });
 
 export const addCommissionerEmail = onCall(async (request) => {

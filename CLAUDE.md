@@ -98,7 +98,7 @@ All mutations funnel success into `session.notice` and failure into `session.err
 - Numbers from Firestore arrive as `Int`, `Int64`, or `NSNumber` depending on path — the file-private `integer(_:)` helper normalizes them. Use it instead of a direct cast.
 - Snapshot callbacks are not on the main actor. Parse inside the callback, then hop with `Task { @MainActor in ... }` to assign to observable state. Keep this pattern; assigning directly from the callback is a data race.
 - Views are small and single-purpose (`Features/<Area>/<Thing>View.swift` or a row/bar/banner component). Prefer a new small file over growing an existing view.
-- The Pool board's commissioner badge reads the server-written `entries.isCommissioner` field (display only). It is **not** an access check — authorization is the Firebase `admin` custom claim. The field is maintained by `claimEntry`, `syncCommissionerClaim`, and `addCommissionerEmail`.
+- The Pool board's commissioner badge reads the server-written `entries.isCommissioner` field (display only). It is **not** an access check — authorization is the Firebase `admin` custom claim. The field is maintained by `claimEntry`, `syncCommissionerClaim`, `addCommissionerEmail`, and `removeCommissionerEmail`.
 
 ## Secrets and sensitive files
 

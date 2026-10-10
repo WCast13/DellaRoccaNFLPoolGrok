@@ -17,4 +17,4 @@ Edit this file as the list changes. Checked items are in the app. Unchecked item
 - [x] 13. Turn the commissioner home into three queues with counts: no pick yet, waiting on a buyback, and no login. Name search still finds any entry.
 - [ ] 14. Ask before changing a pick whose game has already kicked off. (The close-week preview half of this item is gone — weeks grade automatically now.)
 - [x] 15. Put the team name on the pick button. Show the logo stored for that team.
-- [ ] 16. Let a commissioner remove a commissioner, and show who currently has access. Granting is one tap today and cannot be undone in the app.
+- [x] 16. Show who has commissioner access, and let a commissioner remove one. Removal revokes the claim on the server; it takes effect on that person's next sign-in refresh, within an hour.

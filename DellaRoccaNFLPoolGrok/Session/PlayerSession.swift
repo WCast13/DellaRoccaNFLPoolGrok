@@ -46,6 +46,19 @@ struct PoolGame: Identifiable, Hashable, Sendable {
     }
 }
 
+/// One row of the commissioner allowlist, as the server reports it.
+struct CommissionerAccess: Identifiable, Hashable, Sendable {
+    var email: String
+    /// Hardcoded on the server; cannot be removed from the app.
+    var builtIn: Bool
+    /// Has an account — has signed in with this email at least once.
+    var signedIn: Bool
+    /// The admin claim is actually set on that account right now.
+    var hasClaim: Bool
+
+    var id: String { email }
+}
+
 /// One week's outcome from a grading run, as the backend reports it.
 struct GradedWeek: Identifiable, Hashable, Sendable {
     var week: Int
@@ -164,6 +177,8 @@ final class PlayerSession {
     var standingsLoaded = false
     var teamLogos: [String: URL] = [:]
     var privatePicksReady = false
+    var commissioners: [CommissionerAccess] = []
+    var commissionersLoaded = false
 
     /// Standings partitioned by board status. Cached and recomputed only when
     /// `standings` changes so SwiftUI bodies (e.g. the searchable pool board)
@@ -485,7 +500,12 @@ final class PlayerSession {
         var claimLagged = false
         do {
             let result = try await functionsClient().httpsCallable("syncCommissionerClaim").call([:])
-            let granted = (result.data as? [String: Any])?["admin"] as? Bool == true
+            let payload = result.data as? [String: Any]
+            let granted = payload?["admin"] as? Bool == true
+            // The server just cleared this account's claim because its email
+            // was removed from the allowlist. The cached token still carries
+            // the old claim, so refresh now rather than waiting out its hour.
+            let revoked = payload?["revoked"] as? Bool == true
             // Base admin status on the claim actually present in the token the
             // Firestore SDK will use — not on the function's return. A fresh grant
             // can lag the token by a moment, so when the server says we're admin
@@ -496,7 +516,7 @@ final class PlayerSession {
             // declared privatePicks under a concrete /entries/{entryId} parent, which
             // cannot authorize a collection-group query at all; the recursive-wildcard
             // rule is what fixes that.
-            var token = try await user.getIDTokenResult(forcingRefresh: granted)
+            var token = try await user.getIDTokenResult(forcingRefresh: granted || revoked)
             if granted {
                 var attempts = 0
                 while token.claims["admin"] as? Bool != true && attempts < 3 {
@@ -669,7 +689,57 @@ final class PlayerSession {
 
     func addCommissionerEmail(_ email: String) async {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if isPreview {
+            if !commissioners.contains(where: { $0.email == trimmed }) {
+                commissioners.append(CommissionerAccess(email: trimmed, builtIn: false, signedIn: false, hasClaim: false))
+            }
+        }
         await callCommissioner("addCommissionerEmail", ["email": trimmed], success: "\(trimmed) can become a commissioner after signing in.")
+        if errorMessage == nil, !isPreview { await loadCommissioners() }
+    }
+
+    func removeCommissionerEmail(_ email: String) async {
+        if isPreview {
+            commissioners.removeAll { $0.email == email }
+        }
+        await callCommissioner(
+            "removeCommissionerEmail",
+            ["email": email],
+            success: "\(email) is no longer a commissioner."
+        )
+        if errorMessage == nil, !isPreview { await loadCommissioners() }
+    }
+
+    /// Who is on the allowlist and whether their access is in effect.
+    func loadCommissioners() async {
+        if isPreview {
+            if commissioners.isEmpty {
+                commissioners = [
+                    CommissionerAccess(email: "wcastellano13@gmail.com", builtIn: true, signedIn: true, hasClaim: true),
+                    CommissionerAccess(email: "ralph@example.com", builtIn: false, signedIn: true, hasClaim: true),
+                    CommissionerAccess(email: "newperson@example.com", builtIn: false, signedIn: false, hasClaim: false),
+                ]
+            }
+            commissionersLoaded = true
+            return
+        }
+        do {
+            let result = try await functionsClient().httpsCallable("listCommissioners").call([:])
+            let rows = (result.data as? [String: Any])?["commissioners"] as? [[String: Any]] ?? []
+            commissioners = rows.compactMap { row in
+                guard let email = row["email"] as? String else { return nil }
+                return CommissionerAccess(
+                    email: email,
+                    builtIn: row["builtIn"] as? Bool ?? false,
+                    signedIn: row["signedIn"] as? Bool ?? false,
+                    hasClaim: row["hasClaim"] as? Bool ?? false
+                )
+            }
+            commissionersLoaded = true
+        } catch {
+            errorMessage = error.localizedDescription
+            notice = nil
+        }
     }
 
     private func callCommissioner(_ name: String, _ data: [String: Any], success: String) async {
