@@ -12,6 +12,11 @@ struct CommissionerEntriesGrid: View {
     let entries: [ClaimedEntry]
     /// Weeks 1 through this are shown.
     let throughWeek: Int
+    /// Shown in place of the grid when `entries` is empty; the caller knows
+    /// whether that is a filter, a search, or an empty pool.
+    var emptyMessage = "No entries yet."
+    /// Tapping an entry's name. The tab opens the pick sheet for `throughWeek`.
+    let onSelect: (ClaimedEntry) -> Void
 
     private let rowHeight: CGFloat = 38
     private let headerHeight: CGFloat = 24
@@ -22,7 +27,7 @@ struct CommissionerEntriesGrid: View {
 
     var body: some View {
         if entries.isEmpty {
-            Text("No entries yet.")
+            Text(emptyMessage)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else {
@@ -60,8 +65,8 @@ struct CommissionerEntriesGrid: View {
                 .foregroundStyle(.secondary)
                 .frame(width: nameWidth, height: headerHeight, alignment: .leading)
             ForEach(entries) { entry in
-                NavigationLink {
-                    CommissionerEntryView(session: session, entryID: entry.id)
+                Button {
+                    onSelect(entry)
                 } label: {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(entry.label)
@@ -76,6 +81,7 @@ struct CommissionerEntriesGrid: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityHint("Opens the week \(throughWeek) pick for this entry")
             }
         }
     }
@@ -138,13 +144,11 @@ struct CommissionerEntriesGrid: View {
 #if DEBUG
 #Preview("Entries grid") {
     let session = PreviewData.commissioner()
-    return NavigationStack {
-        List {
-            Section {
-                CommissionerEntriesGrid(session: session, entries: session.roster, throughWeek: 4)
-            }
-            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+    return List {
+        Section {
+            CommissionerEntriesGrid(session: session, entries: session.roster, throughWeek: 4) { _ in }
         }
+        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
     }
 }
 #endif

@@ -207,7 +207,6 @@ final class PlayerSession {
     private var standingsListener: ListenerRegistration?
     private var teamListener: ListenerRegistration?
     private var allPrivatePicksListener: ListenerRegistration?
-    private var commissionerPickListener: ListenerRegistration?
     private var privateListeners: [ListenerRegistration] = []
     private var subscribedPrivatePickIDs: Set<String> = []
     private var currentNonce: String?
@@ -418,8 +417,6 @@ final class PlayerSession {
             teamListener = nil
             allPrivatePicksListener?.remove()
             allPrivatePicksListener = nil
-            commissionerPickListener?.remove()
-            commissionerPickListener = nil
             return
         }
 
@@ -550,36 +547,6 @@ final class PlayerSession {
         }
         watchPrivatePicks()
         watchAllPrivatePicks()
-    }
-
-    func watchCommissionerEntry(_ entryID: String?) {
-        guard !isPreview else { return }
-        commissionerPickListener?.remove()
-        commissionerPickListener = nil
-        guard isAdmin, let entryID else { return }
-        commissionerPickListener = Firestore.firestore()
-            .collection("entries")
-            .document(entryID)
-            .collection("privatePicks")
-            .addSnapshotListener { snapshot, error in
-                let weekPicks: [Int: String]? = snapshot.map { snap in
-                    var result: [Int: String] = [:]
-                    for document in snap.documents {
-                        let data = document.data()
-                        let week = data["week"] as? Int ?? Int(document.documentID)
-                        if let week, let team = data["team"] as? String {
-                            result[week] = team
-                        }
-                    }
-                    return result
-                }
-                let failure = error?.localizedDescription
-                Task { @MainActor in
-                    if let failure { self.errorMessage = failure }
-                    guard let weekPicks else { return }
-                    self.privatePicks[entryID] = weekPicks
-                }
-            }
     }
 
     func recordBuyback(entryID: String) async {
