@@ -73,6 +73,21 @@ struct CommissionerEntryView: View {
                 }
             }
 
+            // The grid tags who owes; this is where it gets settled. Lives on
+            // the entry rather than in a tab-level list so the commissioner
+            // marks a fee paid while looking at that player's record.
+            if entry.buybackUnpaid {
+                Section("Buyback fee") {
+                    Text("Elected a buyback after week \(entry.eliminatedWeek.map(String.init) ?? "?"). The fee is settled outside the app.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button("Mark fee paid") {
+                        Task { await session.markBuybackPaid(entryID: entry.id) }
+                    }
+                    .disabled(session.isBusy)
+                }
+            }
+
             if entry.status == .pendingBuyback {
                 Section("Buyback") {
                     Button("Record buyback") { confirmBuyback = true }

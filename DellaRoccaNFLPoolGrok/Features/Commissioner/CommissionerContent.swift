@@ -7,7 +7,6 @@ struct CommissionerContent: View {
     @State private var didInitWeek = false
     @State private var showCloseWeek = false
     @State private var commissionerEmail = ""
-    @State private var showNoLogin = false
 
     private var filtered: [ClaimedEntry] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -96,75 +95,6 @@ struct CommissionerContent: View {
             }
             .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
 
-            if trimmedQuery.isEmpty {
-                queueSection(
-                    "No pick yet",
-                    rows: missingPicks,
-                    empty: session.openWeek.map { "Every alive entry has a week \($0) pick." }
-                        ?? "No week is open for picks.",
-                    checking: !session.privatePicksReady
-                )
-                queueSection(
-                    "Waiting on a buyback",
-                    rows: buybackEntries,
-                    empty: "Nobody is waiting on a buyback."
-                )
-                // Players put themselves back in, so this is the collections
-                // list: entries that are alive on an unpaid buyback.
-                Section {
-                    if buybackFeesOwed.isEmpty {
-                        Text("No buyback fees outstanding.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(buybackFeesOwed) { entry in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(entry.label)
-                                        .font(.body.weight(.semibold))
-                                    Text(feeSubtitle(entry))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Button("Paid") {
-                                    Task { await session.markBuybackPaid(entryID: entry.id) }
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(session.isBusy)
-                            }
-                        }
-                    }
-                } header: {
-                    Text("Buyback fees owed (\(buybackFeesOwed.count))")
-                }
-                Section {
-                    if showNoLogin {
-                        if noLogin.isEmpty {
-                            Text("Every entry has a login.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(noLogin) { entry in
-                                entryLink(entry)
-                            }
-                        }
-                    }
-                } header: {
-                    Button {
-                        showNoLogin.toggle()
-                    } label: {
-                        HStack {
-                            Text("No login (\(noLogin.count))")
-                            Spacer()
-                            Image(systemName: showNoLogin ? "chevron.down" : "chevron.right")
-                                .font(.caption.weight(.semibold))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
             Section("Add a commissioner") {
                 TextField("Apple ID email", text: $commissionerEmail)
                     #if os(iOS) || os(visionOS)
@@ -195,82 +125,6 @@ struct CommissionerContent: View {
 
     private var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var missingPicks: [ClaimedEntry] {
-        session.roster.filter { entry in
-            guard entry.status == .active, let openWeek = session.openWeek else { return false }
-            return session.picks(for: entry)[openWeek] == nil
-        }
-    }
-
-    private var buybackEntries: [ClaimedEntry] {
-        session.roster.filter(\.canBuyBack)
-    }
-
-    private var buybackFeesOwed: [ClaimedEntry] {
-        session.roster.filter(\.buybackUnpaid)
-    }
-
-    private func feeSubtitle(_ entry: ClaimedEntry) -> String {
-        var parts: [String] = []
-        if let week = entry.eliminatedWeek { parts.append("Lost week \(week)") }
-        if let pickWeek = entry.buybackPickWeek,
-           entry.buybackElection == .buyIn,
-           session.picks(for: entry)[pickWeek] == nil {
-            parts.append("no week \(pickWeek) pick yet")
-        }
-        parts.append(entry.isClaimed ? "Has a login" : "No login")
-        return parts.joined(separator: " · ")
-    }
-
-    private var noLogin: [ClaimedEntry] {
-        session.roster.filter { !$0.isClaimed }
-    }
-
-    @ViewBuilder
-    private func queueSection(_ title: String, rows: [ClaimedEntry], empty: String, checking: Bool = false) -> some View {
-        Section {
-            if checking {
-                ProgressView("Checking picks")
-            } else if rows.isEmpty {
-                Text(empty)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(rows) { entry in
-                    entryLink(entry)
-                }
-            }
-        } header: {
-            Text(checking ? title : "\(title) (\(rows.count))")
-        }
-    }
-
-    private func entryLink(_ entry: ClaimedEntry) -> some View {
-        NavigationLink {
-            CommissionerEntryView(session: session, entryID: entry.id)
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.label)
-                    .font(.body.weight(.semibold))
-                Text(entrySubtitle(entry))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func entrySubtitle(_ entry: ClaimedEntry) -> String {
-        var parts = [entry.statusLine, entry.isClaimed ? "Has a login" : "No login"]
-        if entry.status == .active, let openWeek = session.openWeek {
-            if let team = session.picks(for: entry)[openWeek] {
-                parts.append(NFLTeam.shortName(for: team))
-            } else {
-                parts.append("No pick")
-            }
-        }
-        return parts.joined(separator: " · ")
     }
 
     private func message(_ text: String) -> some View {
