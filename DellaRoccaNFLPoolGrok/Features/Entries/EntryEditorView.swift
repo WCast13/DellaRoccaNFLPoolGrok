@@ -43,12 +43,19 @@ struct EntryEditorView: View {
                         .frame(height: 100)
                     }
                 }
-            } else if entry.status != .active {
+            } else if entry.status != .active, !entry.hasOpenBuybackDecision {
                 Section {
-                    Text("This entry cannot make a pick until a commissioner records a buyback.")
+                    Text(entry.statusLine)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            // The player's own call after a loss in weeks 1-6. Shown alongside
+            // the pick section once they elect in, since they then owe a pick
+            // for the decision week and can still change their mind.
+            if entry.hasOpenBuybackDecision {
+                BuybackDecisionCard(session: session, entry: entry)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {

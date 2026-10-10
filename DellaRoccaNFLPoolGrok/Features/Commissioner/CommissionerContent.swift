@@ -64,7 +64,7 @@ struct CommissionerContent: View {
                 }
                 .disabled(session.isBusy)
                 if let preview, preview.week == week {
-                    Text("\(preview.wins) wins · \(preview.losses) losses · \(preview.missingPicks) missing · \(preview.ungraded) not final")
+                    Text("\(preview.wins) wins · \(preview.losses) losses · \(preview.missingPicks) missing · \(preview.ungraded) not final · \(preview.lapsedBuybacks) buybacks lapsed")
                         .font(.subheadline)
                     ForEach(preview.examples, id: \.self) { example in
                         Text(example)
@@ -93,6 +93,35 @@ struct CommissionerContent: View {
                     rows: buybackEntries,
                     empty: "Nobody is waiting on a buyback."
                 )
+                // Players put themselves back in, so this is the collections
+                // list: entries that are alive on an unpaid buyback.
+                Section {
+                    if buybackFeesOwed.isEmpty {
+                        Text("No buyback fees outstanding.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(buybackFeesOwed) { entry in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(entry.label)
+                                        .font(.body.weight(.semibold))
+                                    Text(feeSubtitle(entry))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("Paid") {
+                                    Task { await session.markBuybackPaid(entryID: entry.id) }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(session.isBusy)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Buyback fees owed (\(buybackFeesOwed.count))")
+                }
                 Section {
                     if showNoLogin {
                         if noLogin.isEmpty {
@@ -160,7 +189,7 @@ struct CommissionerContent: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Alive entries with no pick, or with a final loss, are knocked out. This can be bought back through week 6.")
+            Text("Alive entries with no pick, or with a final loss, are knocked out — buyable back through week 6. Entries that never completed a buyback for this week are out for the season and owe nothing.")
         }
     }
 
@@ -177,6 +206,22 @@ struct CommissionerContent: View {
 
     private var buybackEntries: [ClaimedEntry] {
         session.roster.filter(\.canBuyBack)
+    }
+
+    private var buybackFeesOwed: [ClaimedEntry] {
+        session.roster.filter(\.buybackUnpaid)
+    }
+
+    private func feeSubtitle(_ entry: ClaimedEntry) -> String {
+        var parts: [String] = []
+        if let week = entry.eliminatedWeek { parts.append("Lost week \(week)") }
+        if let pickWeek = entry.buybackPickWeek,
+           entry.buybackElection == .buyIn,
+           session.picks(for: entry)[pickWeek] == nil {
+            parts.append("no week \(pickWeek) pick yet")
+        }
+        parts.append(entry.isClaimed ? "Has a login" : "No login")
+        return parts.joined(separator: " · ")
     }
 
     private var noLogin: [ClaimedEntry] {

@@ -49,6 +49,50 @@ enum PreviewData {
         ))
     }
 
+    /// Knocked out in week 3 with the decision still open.
+    static func pendingBuyback() -> PlayerSession {
+        PlayerSession(preview: PlayerSession.PreviewSample(
+            userID: "preview-user",
+            accountLabel: "wcastellano13@gmail.com",
+            entries: [knockedOut],
+            games: games,
+            standings: standings,
+            standingsLoaded: true,
+            teamLogos: logos
+        ))
+    }
+
+    /// Elected the buyback, owes the fee, has not yet made the week-4 pick.
+    static func boughtBackUnpaid() -> PlayerSession {
+        PlayerSession(preview: PlayerSession.PreviewSample(
+            userID: "preview-user",
+            accountLabel: "wcastellano13@gmail.com",
+            entries: [electedIn],
+            games: games,
+            standings: standings,
+            standingsLoaded: true,
+            teamLogos: logos
+        ))
+    }
+
+    static let knockedOut = entry(
+        id: "pat-buyer",
+        label: "Pat Buyer",
+        status: .pendingBuyback,
+        eliminatedWeek: 3,
+        picks: [1: "JAX", 2: "SF", 3: "CIN"]
+    )
+
+    static let electedIn = entry(
+        id: "pat-buyer",
+        label: "Pat Buyer",
+        status: .active,
+        eliminatedWeek: 3,
+        picks: [1: "JAX", 2: "SF", 3: "CIN"],
+        buybackElection: .buyIn,
+        buybackUnpaid: true
+    )
+
     static let will = entry(
         id: "will-castellano",
         label: "Will Castellano",
@@ -134,7 +178,9 @@ enum PreviewData {
         picks: [Int: String] = [:],
         buybackWeeks: [Int] = [],
         isClaimed: Bool = true,
-        isCommissioner: Bool = false
+        isCommissioner: Bool = false,
+        buybackElection: BuybackElection? = nil,
+        buybackUnpaid: Bool = false
     ) -> ClaimedEntry {
         ClaimedEntry(
             id: id,
@@ -146,7 +192,9 @@ enum PreviewData {
             usedTeams: Dictionary(uniqueKeysWithValues: picks.map { ($0.value, $0.key) }),
             buybackWeeks: buybackWeeks,
             isClaimed: isClaimed,
-            isCommissioner: isCommissioner
+            isCommissioner: isCommissioner,
+            buybackElection: buybackElection,
+            buybackUnpaid: buybackUnpaid
         )
     }
 
