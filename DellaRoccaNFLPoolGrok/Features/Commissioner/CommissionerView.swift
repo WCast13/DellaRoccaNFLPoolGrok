@@ -16,12 +16,4 @@ struct CommissionerView: View {
 #Preview("Commissioner") {
     CommissionerView(session: PreviewData.commissioner())
 }
-
-#Preview("Sign in") {
-    CommissionerView(session: PreviewData.signedOut())
-}
-
-#Preview("Not a commissioner") {
-    CommissionerView(session: PreviewData.player())
-}
 #endif

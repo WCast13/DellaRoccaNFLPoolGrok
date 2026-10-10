@@ -248,7 +248,9 @@ Commissioner access is the Auth custom claim `admin`, not this row.
 
 ## Commissioner access
 
-`syncCommissionerClaim` sets `admin: true` when the signed-in email is `wcastellano13@gmail.com` or is listed on `pool/2026.commissionerEmails`. `addCommissionerEmail` appends to that list. The board's commissioner badge reads the server-written `entries.isCommissioner` field (display only); the real auth check is always the `admin` claim.
+The allowlist is `wcastellano13@gmail.com` (built in) plus `pool/2026.commissionerEmails`, and it is the source of truth in both directions: `syncCommissionerClaim` sets `admin: true` when the signed-in email is on it and **clears the claim when it is not**. `addCommissionerEmail` appends; `removeCommissionerEmail` removes and, if that email has an account, revokes its claim immediately. The built-in address cannot be removed from the app. `listCommissioners` reports each allowed email with whether it has signed in and whether the claim is currently set.
+
+A revoked account keeps the commissioner tools until its ID token refreshes — up to an hour — unless its own `syncCommissionerClaim` call reports `revoked`, which makes the app refresh at once. That is the standard custom-claim window.
 
 ## Callable functions
 
@@ -263,8 +265,10 @@ Commissioner access is the Auth custom claim `admin`, not this row.
 | `closeWeek` | Admin | Operational trigger only — forces the same grading the hourly sync runs. Nothing in the app calls it. `apply: true` writes; otherwise it is a dry run |
 | `gradeWeeks` | Admin | Regrades imported weeks 1–3 from public `picks`. `apply` defaults to true |
 | `syncSeason` | Admin | The hourly job on demand: teams, games, scores and spreads, then publishes locked picks, then grades every ready week. Returns the grading reports. The commissioner tab's "Sync scores and grade now" button calls it |
-| `syncSeasonScheduled` | Hourly | Same sync. Spreads refresh only if `oddsSyncedAt` is older than 12 hours. Then publishes locked picks, then grades every week whose games have all kicked off (`gradeClosedWeeks`) |
-| `syncCommissionerClaim` | Signed in | Grants the admin claim when the email is allowed |
+| `syncSeasonScheduled` | Hourly | Same sync. Spreads refresh only if `oddsSyncedAt` is older than 12 hours. Then publishes locked picks, then grades every week whose games have all kicked off (`gradeClosedWeeks`), stopping at the first with a game not yet final. Logs one `syncSeason run:` summary line every run, graded or not |
+| `syncCommissionerClaim` | Signed in | Grants the admin claim when the email is allowed, and revokes it when the email is not (returns `revoked: true`) |
 | `addCommissionerEmail` | Admin | Adds an email to `pool/2026`, and flags that user's entries `isCommissioner` if they have an account |
+| `removeCommissionerEmail` | Admin | Removes an email from `pool/2026` and revokes its claim now if the account exists. Refuses the built-in address |
+| `listCommissioners` | Admin | Every allowed email with `builtIn`, `signedIn`, and `hasClaim` |
 
 Grading report (returned by `closeWeek`, logged by the sync): `week`, `missingPicks`, `losses`, `wins`, `ungraded`, `updated`, `lapsedBuybacks`, `applied`, `examples` (up to 12 lines).
