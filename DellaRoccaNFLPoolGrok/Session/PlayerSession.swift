@@ -46,6 +46,28 @@ struct PoolGame: Identifiable, Hashable, Sendable {
     }
 }
 
+/// One week's outcome from a grading run, as the backend reports it.
+struct GradedWeek: Identifiable, Hashable, Sendable {
+    var week: Int
+    var wins: Int
+    var losses: Int
+    var missingPicks: Int
+    var ungraded: Int
+    var lapsedBuybacks: Int
+    var updated: Int
+    var examples: [String]
+
+    var id: Int { week }
+}
+
+/// What a manual sync-and-grade run did. Same code path as the hourly job.
+struct SeasonSyncSummary: Hashable, Sendable {
+    var games: Int
+    var spreads: Int
+    var publishedPicks: Int
+    var graded: [GradedWeek]
+}
+
 /// The player's reversible choice after a knockout in weeks 1-6. Written by the
 /// `electBuyback` callable; cleared by the backend once the decision resolves.
 enum BuybackElection: String, Hashable, Sendable {
@@ -573,6 +595,67 @@ final class PlayerSession {
         } catch {
             errorMessage = error.localizedDescription
             notice = nil
+        }
+    }
+
+    /// Runs the hourly job now: refresh scores, publish locked picks, then grade
+    /// every week whose games have all kicked off. Same backend path as
+    /// syncSeasonScheduled, so what this reports is what the next tick would
+    /// have done. Safe to repeat — a week already graded is skipped. Admin only,
+    /// enforced server-side.
+    func runSeasonSync() async -> SeasonSyncSummary? {
+        if isPreview {
+            let summary = SeasonSyncSummary(
+                games: 16,
+                spreads: 16,
+                publishedPicks: 3,
+                graded: [
+                    GradedWeek(
+                        week: 3, wins: 4, losses: 1, missingPicks: 2, ungraded: 0,
+                        lapsedBuybacks: 1, updated: 4,
+                        examples: ["Will Castellano: no pick", "Pat Buyer: CIN lost"]
+                    ),
+                ]
+            )
+            notice = "Synced and graded week 3."
+            errorMessage = nil
+            return summary
+        }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let result = try await functionsClient().httpsCallable("syncSeason").call([:])
+            let data = result.data as? [String: Any] ?? [:]
+            let graded = (data["graded"] as? [[String: Any]] ?? []).map { row in
+                GradedWeek(
+                    week: integer(row["week"]) ?? 0,
+                    wins: integer(row["wins"]) ?? 0,
+                    losses: integer(row["losses"]) ?? 0,
+                    missingPicks: integer(row["missingPicks"]) ?? 0,
+                    ungraded: integer(row["ungraded"]) ?? 0,
+                    lapsedBuybacks: integer(row["lapsedBuybacks"]) ?? 0,
+                    updated: integer(row["updated"]) ?? 0,
+                    examples: row["examples"] as? [String] ?? []
+                )
+            }
+            let summary = SeasonSyncSummary(
+                games: integer(data["games"]) ?? 0,
+                spreads: integer(data["spreads"]) ?? 0,
+                publishedPicks: integer(data["publishedPicks"]) ?? 0,
+                graded: graded
+            )
+            if graded.isEmpty {
+                notice = "Synced. No week was ready to grade."
+            } else {
+                let weeks = graded.map { String($0.week) }.joined(separator: ", ")
+                notice = "Synced and graded week\(graded.count == 1 ? "" : "s") \(weeks)."
+            }
+            errorMessage = nil
+            return summary
+        } catch {
+            errorMessage = error.localizedDescription
+            notice = nil
+            return nil
         }
     }
 
