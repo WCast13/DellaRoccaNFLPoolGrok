@@ -79,7 +79,7 @@ struct EntryEditorView: View {
             // must not carry over — the save bar would submit it for the new
             // week and burn that team for the season. Unconditional, unlike the
             // hook below: a changed week invalidates any selection made for the
-            // week before it. Mirrors CommissionerEntryView's stepper hook.
+            // week before it.
             selectedTeam = newWeek.flatMap { picks[$0] }
         }
         .onChange(of: week.flatMap { picks[$0] }) { oldSaved, newSaved in
