@@ -50,6 +50,43 @@ enum PreviewData {
         ))
     }
 
+    /// The commissioner with one pick saving and one that failed, for the
+    /// queue bar on the tab and the failure line in the sheet.
+    static func commissionerSaving() -> PlayerSession {
+        PlayerSession(preview: PlayerSession.PreviewSample(
+            userID: "preview-commissioner",
+            accountLabel: "wcastellano13@gmail.com",
+            entries: [will, casa],
+            games: games,
+            privatePicks: privatePicks,
+            standings: standings,
+            standingsLoaded: true,
+            isAdmin: true,
+            privatePicksReady: true,
+            teamLogos: logos,
+            activityLog: activity,
+            pickSaveQueue: [savingPick, failedPick]
+        ))
+    }
+
+    static let savingPick = PendingPickSave(
+        id: UUID(),
+        entryID: "andrew-mehlbaum",
+        entryLabel: "Andrew Mehlbaum",
+        week: 4,
+        team: "DET",
+        state: .saving
+    )
+
+    static let failedPick = PendingPickSave(
+        id: UUID(),
+        entryID: will.id,
+        entryLabel: will.label,
+        week: 4,
+        team: "GB",
+        state: .failed("The Packers were already used in week 2.")
+    )
+
     /// Knocked out in week 3 with the decision still open.
     static func pendingBuyback() -> PlayerSession {
         PlayerSession(preview: PlayerSession.PreviewSample(

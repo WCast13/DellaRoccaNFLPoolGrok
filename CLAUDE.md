@@ -76,7 +76,7 @@ If you add a session method that touches Firebase, you must add an `if isPreview
 
 A pick lives in `entries/{id}/privatePicks/{week}` until its game kicks off, then the backend copies it onto `entries/{id}.picks` + `.usedTeams` and deletes the private doc (`publishLockedPicks`).
 
-So the client holds two sources and must merge them. **Always use the accessors** `session.picks(for: entry)` and `session.usedTeams(for: entry)`, which overlay `privatePicks[entry.id]` on top of the public `entry.picks` / `entry.usedTeams`. Reading the raw fields silently drops the current week's unlocked pick.
+So the client holds two sources and must merge them. **Always use the accessors** `session.picks(for: entry)` and `session.usedTeams(for: entry)`, which overlay `privatePicks[entry.id]`, then any commissioner pick still in `pickSaveQueue`, on top of the public `entry.picks` / `entry.usedTeams`. Reading the raw fields silently drops the current week's unlocked pick.
 
 ### Player vs admin listener topology
 
@@ -89,7 +89,7 @@ These are mutually exclusive (`watchPrivatePicks` early-returns when `isAdmin`).
 
 Admin status also drives UI: the Commissioner tab only exists when `session?.isAdmin == true`.
 
-The Commissioner tab (`CommissionerContent`) is one `List`: week header and slate, the week summary (`WeekSummary.make` mirrors the server's win/loss rule — a tie is a loss), and an Active/Eliminated segmented filter over the entries grid. A Tools button in the toolbar pushes `CommissionerToolsView`, which holds the activity log, the commissioners list, and grade-now. Tapping a name in the grid opens `CommissionerPickSheet` for the week the header shows; that sheet is the only per-entry commissioner surface (picks after kickoff, buyback overrides, fee paid).
+The Commissioner tab (`CommissionerContent`) is one `List`: week header and slate, the week summary (`WeekSummary.make` mirrors the server's win/loss rule — a tie is a loss), and an Active/Eliminated segmented filter over the entries grid. A Tools button in the toolbar pushes `CommissionerToolsView`, which holds the activity log, the commissioners list, and grade-now. Tapping a name in the grid opens `CommissionerPickSheet` for the week the header shows; that sheet is the only per-entry commissioner surface (picks after kickoff, buyback overrides, fee paid). The sheet is spare by design: the week and the pick's standing sit in the navigation subtitle, the body is `CommissionerPickTeamGrid` (logo chips drawn from `CommissionerPickSlate`, which computes the week's choices and game states once), and the fee and buyback are one row each. Tapping a team calls `session.enqueuePick` and closes the sheet at once, with no confirmation, after kickoff too. The queue (`pickSaveQueue` on `PlayerSession`) drains one `submitPick` callable at a time in the background and keeps a failed save until `PickSaveQueueBar` on the tab retries or dismisses it.
 
 ### Status and notices
 
