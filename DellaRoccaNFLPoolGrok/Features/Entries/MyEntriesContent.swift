@@ -10,9 +10,7 @@ struct MyEntriesContent: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if !session.isSignedIn {
-                    MyEntriesSignedOut(session: session)
-                } else if session.entries.isEmpty {
+                if session.entries.isEmpty {
                     ClaimEntryForm(session: session, pin: $pin)
                 } else {
                     MyEntriesList(session: session, claiming: $claiming)

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	Merged into the generated Info.plist (GENERATE_INFOPLIST_FILE stays on).
+	The URL scheme is the encoded GOOGLE_APP_ID from GoogleService-Info.plist
+	("1:971550505764:ios:..." with colons as dashes). Firebase Auth opens a web
+	sheet for Google sign-in and for the phone reCAPTCHA check, and this scheme
+	is how that sheet hands control back to the app; ContentView passes the URL
+	to Auth.auth().canHandle. The first scheme is REVERSED_CLIENT_ID from
+	GoogleService-Info.plist, which Firebase prefers when it exists; the second
+	is the encoded app id, kept as the fallback.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>Firebase Auth callback</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.971550505764-s8gl939n14m8bl0lptrrair6maf0mhip</string>
+				<string>app-1-971550505764-ios-007519bc13bae26f9211b1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -258,6 +258,8 @@ Eight wrong attempts per account per hour. Every outcome that does not transfer 
 
 Commissioner access is the Auth custom claim `admin`, not this row.
 
+Sign-in providers: `apple.com`, `google.com` (Firebase's OAuth web flow), `phone`, and `password`. A phone-only account has no `email`, so it can never be a commissioner.
+
 ### Auth user — Firebase Auth, not a Firestore collection
 
 | Column | Type | Key | Notes |
