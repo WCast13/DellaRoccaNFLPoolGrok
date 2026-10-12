@@ -11,14 +11,14 @@ Swift types live in `DellaRoccaNFLPoolGrok/Models/` and `Session/PlayerSession.s
 | Status | Meaning | Can pick? |
 | --- | --- | --- |
 | `active` | Alive | Yes, until that game kicks off |
-| `pendingBuyback` | Lost in week 1–6 and is waiting on the commissioner | No |
+| `pendingBuyback` | Lost in week 1–6; a pick for the next week confirms the buyback | No |
 | `eliminated` | Out | No |
 
 A loss in week **1–6** sets `pendingBuyback`, `eliminatedWeek`, and `buybackDeclined: false`. A loss in week **7–18**, or a declined buyback, sets `eliminated` and `buybackDeclined: true`. The app calls `active` “Alive”.
 
 ## Buyback
 
-The **player** decides, and the decision is confirmed by picking. A loss in weeks 1–6 sets `pendingBuyback`; the entry then owes a pick for week **N+1**, where N is `eliminatedWeek`.
+**The pick is the buyback.** A loss in weeks 1–6 sets `pendingBuyback`; the entry then owes a pick for week **N+1**, where N is `eliminatedWeek`. A pick for week N+1 confirms the buyback however it got there: the player elected in the app and picked, or a commissioner entered the pick. The in-app election exists so a player can commit to the fee, or back out, before picking.
 
 | Action | Effect |
 | --- | --- |
@@ -31,11 +31,13 @@ The hourly sync resolves it once every week-N+1 game has kicked off (`gradeClose
 
 | State at the deadline | Result |
 | --- | --- |
-| Elected in, has a week N+1 pick | Buyback confirmed — `provisional` dropped, `confirmedAt` stamped, `buybackElection` cleared, pick grades normally, fee still owed |
+| Has a week N+1 pick, elected in or not | Buyback confirmed — the provisional row is confirmed, or a row is added when nothing elected it; `boughtBackBeforeWeek` and `confirmedAt` stamped, `buybackElection` cleared. A still-`pendingBuyback` entry is revived (`active`, `eliminatedWeek` cleared, `buybackDeclined: false`). The pick then grades normally. Fee owed only if elected in |
 | Elected in, no pick | `eliminated` + `buybackDeclined: true`, provisional row removed, `buybackUnpaid` cleared. **Not recorded as a loss** — a loss at week N+1 ≤ 6 would hand it a second buyback |
-| Never elected | `eliminated` + `buybackDeclined: true` |
+| Never elected, no pick | `eliminated` + `buybackDeclined: true` |
 
-A row already carrying `confirmedAt` short-circuits this, so re-closing a week cannot lapse a completed buyback.
+An `active` entry whose row for week N is already confirmed short-circuits this, so re-closing a week cannot lapse a completed buyback.
+
+The first version of this rule (2026-10-10) also required the in-app election, so the week-4 close lapsed 138 entries whose week-4 picks had been loaded outside the app, and the week 1–3 importer had left 49 more stuck at `pendingBuyback` from week 1. `firebase/scripts/repair-buybacks.py` re-derives every entry's standing from its picks and the final scores under the pick rule, as a dry run by default, and was used to restore them.
 
 Commissioner overrides remain: `recordBuyback` puts the entry back to `active`, clears `eliminatedWeek`, appends a non-provisional buyback, and increments `buybackCount`. `declineBuyback` sets `eliminated` and `buybackDeclined: true`. `markBuybackPaid` clears `buybackUnpaid`.
 

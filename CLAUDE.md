@@ -73,12 +73,13 @@ So the client holds two sources and must merge them. **Always use the accessors*
 `refreshAccess()` resolves admin status by calling `syncCommissionerClaim`, force-refreshing the ID token when granted, then reading the `admin` custom claim. Admin status then selects which private-pick listeners attach:
 
 - **Player**: `watchPrivatePicks()` — one listener per owned entry.
-- **Admin**: `watchAllPrivatePicks()` — a single `collectionGroup("privatePicks")` listener across all entries, gated by `privatePicksReady`.
-- **Admin viewing one entry**: `watchCommissionerEntry(_:)`.
+- **Admin**: `watchAllPrivatePicks()` — a single `collectionGroup("privatePicks")` listener across all entries, gated by `privatePicksReady`. The commissioner pick sheet reads from this; there is no per-entry admin listener.
 
-These are mutually exclusive (`watchPrivatePicks` early-returns when `isAdmin`). Changing one usually means changing the others, and listeners must be removed before reassignment — `watchPool()` tears everything down on sign-out.
+These are mutually exclusive (`watchPrivatePicks` early-returns when `isAdmin`). Changing one usually means changing the other, and listeners must be removed before reassignment — `watchPool()` tears everything down on sign-out.
 
 Admin status also drives UI: the Commissioner tab only exists when `session?.isAdmin == true`.
+
+The Commissioner tab (`CommissionerContent`) is one `List`: week header and slate, the week summary (`WeekSummary.make` mirrors the server's win/loss rule — a tie is a loss), an Active/Eliminated segmented filter over the entries grid, then grade-now and access sections. Tapping a name in the grid opens `CommissionerPickSheet` for the week the header shows; that sheet is the only per-entry commissioner surface (picks after kickoff, buyback overrides, fee paid).
 
 ### Status and notices
 
