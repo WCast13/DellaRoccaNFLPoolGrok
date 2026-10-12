@@ -81,6 +81,55 @@ struct SeasonSyncSummary: Hashable, Sendable {
     var graded: [GradedWeek]
 }
 
+/// One row of the commissioner activity log. Written only by the backend
+/// (`logEvent` in firebase/functions/src/log.ts); the app reads it.
+struct ActivityEvent: Identifiable, Hashable, Sendable {
+    enum Category: String, CaseIterable, Identifiable, Sendable {
+        case picks, logins, buybacks, system
+
+        var id: Self { self }
+
+        var title: String {
+            switch self {
+            case .picks: return "Picks"
+            case .logins: return "Logins"
+            case .buybacks: return "Buybacks"
+            case .system: return "System"
+            }
+        }
+    }
+
+    var id: String
+    var at: Date
+    /// Dotted, prefix first: `pick.changed`, `auth.signIn`, `buyback.lapsed`,
+    /// `system.sync`. The prefix picks the category.
+    var type: String
+    var summary: String
+    /// `player`, `commissioner`, or `system`.
+    var actorRole: String
+    var actorEmail: String? = nil
+    var entryId: String? = nil
+    var entryLabel: String? = nil
+    var week: Int? = nil
+    var team: String? = nil
+
+    var category: Category {
+        if type.hasPrefix("pick.") { return .picks }
+        if type.hasPrefix("auth.") || type == "entry.claimed" { return .logins }
+        if type.hasPrefix("buyback.") || type.hasPrefix("entry.") { return .buybacks }
+        return .system
+    }
+
+    /// Who did it, for the caption under the summary.
+    var actorLine: String {
+        switch actorRole {
+        case "commissioner": return actorEmail.map { "Commissioner · \($0)" } ?? "Commissioner"
+        case "player": return actorEmail ?? "Player"
+        default: return "Hourly job"
+        }
+    }
+}
+
 /// The player's reversible choice after a knockout in weeks 1-6. Written by the
 /// `electBuyback` callable; cleared by the backend once the decision resolves.
 enum BuybackElection: String, Hashable, Sendable {
@@ -179,6 +228,9 @@ final class PlayerSession {
     var privatePicksReady = false
     var commissioners: [CommissionerAccess] = []
     var commissionersLoaded = false
+    /// The newest activity-log events, newest first. Admin only.
+    var activityLog: [ActivityEvent] = []
+    var activityLogLoaded = false
 
     /// Standings partitioned by board status. Cached and recomputed only when
     /// `standings` changes so SwiftUI bodies (e.g. the searchable pool board)
@@ -207,6 +259,7 @@ final class PlayerSession {
     private var standingsListener: ListenerRegistration?
     private var teamListener: ListenerRegistration?
     private var allPrivatePicksListener: ListenerRegistration?
+    private var activityListener: ListenerRegistration?
     private var privateListeners: [ListenerRegistration] = []
     private var subscribedPrivatePickIDs: Set<String> = []
     private var currentNonce: String?
@@ -239,6 +292,7 @@ final class PlayerSession {
         var teamLogos: [String: URL] = [:]
         var notice: String?
         var errorMessage: String?
+        var activityLog: [ActivityEvent] = []
     }
 
     init(preview sample: PreviewSample) {
@@ -255,6 +309,8 @@ final class PlayerSession {
         teamLogos = sample.teamLogos
         notice = sample.notice
         errorMessage = sample.errorMessage
+        activityLog = sample.activityLog
+        activityLogLoaded = sample.isAdmin
     }
 #endif
 
@@ -391,6 +447,11 @@ final class PlayerSession {
             )
             _ = try await Auth.auth().signIn(with: firebaseCredential)
             errorMessage = nil
+            // Put the sign-in on the commissioner log. Best effort: a failure
+            // here must not undo a successful sign-in, so the result is ignored.
+            Task {
+                _ = try? await self.functionsClient().httpsCallable("logSignIn").call(["provider": "apple"])
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -417,6 +478,10 @@ final class PlayerSession {
             teamListener = nil
             allPrivatePicksListener?.remove()
             allPrivatePicksListener = nil
+            activityListener?.remove()
+            activityListener = nil
+            activityLog = []
+            activityLogLoaded = false
             return
         }
 
@@ -491,6 +556,7 @@ final class PlayerSession {
             isAdmin = false
             watchPrivatePicks()
             watchAllPrivatePicks()
+            watchActivityLog()
             return
         }
         var resolvedAdmin = false
@@ -547,6 +613,7 @@ final class PlayerSession {
         }
         watchPrivatePicks()
         watchAllPrivatePicks()
+        watchActivityLog()
     }
 
     func recordBuyback(entryID: String) async {
@@ -800,6 +867,33 @@ final class PlayerSession {
         }
     }
 
+    /// Admin only: the newest 300 log events, newest first. Cleared when the
+    /// account is not a commissioner. Newer events arrive live.
+    private func watchActivityLog() {
+        guard !isPreview else { return }
+        activityListener?.remove()
+        activityListener = nil
+        guard isAdmin else {
+            activityLog = []
+            activityLogLoaded = false
+            return
+        }
+        activityListener = Firestore.firestore()
+            .collection("activityLog")
+            .order(by: "at", descending: true)
+            .limit(to: 300)
+            .addSnapshotListener { snapshot, error in
+                let parsed = snapshot?.documents.compactMap(ActivityEvent.init(document:))
+                let failure = error?.localizedDescription
+                Task { @MainActor in
+                    if let failure { self.errorMessage = failure }
+                    guard let parsed else { return }
+                    self.activityLog = parsed
+                    self.activityLogLoaded = true
+                }
+            }
+    }
+
     private func clearPrivateListeners() {
         privateListeners.forEach { $0.remove() }
         privateListeners.removeAll()
@@ -925,5 +1019,28 @@ private extension PoolGame {
         }
         self.homeScore = integer(data["homeScore"])
         self.awayScore = integer(data["awayScore"])
+    }
+}
+
+private extension ActivityEvent {
+    nonisolated init?(document: DocumentSnapshot) {
+        let data = document.data() ?? [:]
+        guard let type = data["type"] as? String, let summary = data["summary"] as? String else {
+            print("[PlayerSession] Dropped activity \(document.documentID): missing 'type' or 'summary'")
+            return nil
+        }
+        self.id = document.documentID
+        // `at` is a server timestamp; it is only ever missing on a local
+        // write, which this client never makes.
+        self.at = (data["at"] as? Timestamp)?.dateValue() ?? Date()
+        self.type = type
+        self.summary = summary
+        let actor = data["actor"] as? [String: Any]
+        self.actorRole = actor?["role"] as? String ?? "system"
+        self.actorEmail = actor?["email"] as? String
+        self.entryId = data["entryId"] as? String
+        self.entryLabel = data["entryLabel"] as? String
+        self.week = integer(data["week"])
+        self.team = data["team"] as? String
     }
 }

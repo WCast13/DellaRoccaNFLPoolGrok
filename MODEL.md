@@ -176,6 +176,24 @@ The client skips a document with no `label`. `ClaimedEntry` is this row in Swift
 | `gradedThroughWeek` | number | | Set by the importer grader, currently through week 3 |
 | `updatedAt` | timestamp | | |
 
+### `activityLog` — one document per thing that happened
+
+The commissioner activity log. Written only by Cloud Functions (`logEvent` / `logEventInBatch` in `firebase/functions/src/log.ts`); clients cannot write it, and only admins read it. The app's Commissioner tab listens to the newest 300, ordered by `at` descending, and buckets them by the type's prefix. Every mutation callable logs what it did; the hourly sync, the manual sync, and the week close log their runs and, per entry, every knockout, confirmed buyback, and lapse.
+
+| Column | Type | Key | Notes |
+| --- | --- | --- | --- |
+| document id | string | PK | Auto id |
+| `at` | timestamp | | Server time of the event |
+| `season` | number | | `2026` |
+| `type` | string | | Dotted, prefix first. `pick.submitted` `pick.changed` · `auth.signIn` `entry.claimed` · `buyback.elected` `buyback.recorded` `buyback.declined` `buyback.feePaid` `buyback.confirmed` `buyback.lapsed` `entry.knockedOut` `entry.eliminated` · `system.sync` `system.syncFailed` `system.weekGraded` `system.gradeWeeks` · `commissioner.added` `commissioner.removed` |
+| `summary` | string | | One line, past tense, naming the entry. What the app shows |
+| `actor` | map | | `role` (`player` / `commissioner` / `system`), `uid`, `email` when the token carried one |
+| `entryId` | string | FK → `entries` | When the event is about one entry |
+| `entryLabel` | string | | Copied so the log reads without a join |
+| `week` | number | | The week the event concerns (the knockout week for buyback events) |
+| `team` / `previousTeam` | string | FK → `teams` | For picks and losses |
+| `details` | map | | Type-specific extras: `byCommissioner`, `afterKickoff`, `buyBackIn`, `trigger`, grading counts, … |
+
 ### `privatePicks` — subcollection `entries/{entryId}/privatePicks/{week}`
 
 | Column | Type | Key | Notes |
@@ -272,5 +290,6 @@ A revoked account keeps the commissioner tools until its ID token refreshes — 
 | `addCommissionerEmail` | Admin | Adds an email to `pool/2026`, and flags that user's entries `isCommissioner` if they have an account |
 | `removeCommissionerEmail` | Admin | Removes an email from `pool/2026` and revokes its claim now if the account exists. Refuses the built-in address |
 | `listCommissioners` | Admin | Every allowed email with `builtIn`, `signedIn`, and `hasClaim` |
+| `logSignIn` | Signed in | Writes an `auth.signIn` event. The app calls it right after a successful Apple sign-in and ignores a failure |
 
 Grading report (returned by `closeWeek`, logged by the sync): `week`, `missingPicks`, `losses`, `wins`, `ungraded`, `updated`, `lapsedBuybacks`, `applied`, `examples` (up to 12 lines).

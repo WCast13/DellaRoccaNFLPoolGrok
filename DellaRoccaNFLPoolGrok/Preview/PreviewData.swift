@@ -45,7 +45,8 @@ enum PreviewData {
             standingsLoaded: true,
             isAdmin: true,
             privatePicksReady: true,
-            teamLogos: logos
+            teamLogos: logos,
+            activityLog: activity
         ))
     }
 
@@ -74,6 +75,33 @@ enum PreviewData {
             teamLogos: logos
         ))
     }
+
+    /// A day of commissioner-log traffic, newest first, as the listener delivers it.
+    static let activity: [ActivityEvent] = [
+        event("pick.changed", "Casa Castellano changed week 4 from GB to DET by a commissioner", minutesAgo: 4,
+              role: "commissioner", email: "wcastellano13@gmail.com", entry: "casa-castellano", label: "Casa Castellano", week: 4, team: "DET"),
+        event("pick.submitted", "Will Castellano picked DET for week 4", minutesAgo: 12,
+              role: "player", email: "wcastellano13@gmail.com", entry: "will-castellano", label: "Will Castellano", week: 4, team: "DET"),
+        event("auth.signIn", "wcastellano13@gmail.com signed in (commissioner)", minutesAgo: 15,
+              role: "commissioner", email: "wcastellano13@gmail.com"),
+        event("system.sync", "Hourly sync ran: 272 games, 0 spreads, 3 picks published, graded nothing", minutesAgo: 41, role: "system"),
+        event("buyback.elected", "Pat Buyer elected to buy back in after week 3", minutesAgo: 95,
+              role: "player", email: "pat@example.com", entry: "pat-buyer", label: "Pat Buyer", week: 3),
+        event("buyback.recorded", "Commissioner recorded a buyback for Sam Buyer after week 3", minutesAgo: 130,
+              role: "commissioner", email: "wcastellano13@gmail.com", entry: "sam-buyer", label: "Sam Buyer", week: 3),
+        event("buyback.feePaid", "Commissioner marked Sam Buyer's buyback fee paid", minutesAgo: 129,
+              role: "commissioner", email: "wcastellano13@gmail.com", entry: "sam-buyer", label: "Sam Buyer"),
+        event("system.weekGraded", "Week 3 graded: 104 wins, 2 losses, 0 no pick, 0 not final, 0 buybacks lapsed", minutesAgo: 60 * 26, role: "system", week: 3),
+        event("entry.knockedOut", "Pat Buyer lost week 3 with CIN; buyback open", minutesAgo: 60 * 26,
+              role: "system", entry: "pat-buyer", label: "Pat Buyer", week: 3, team: "CIN"),
+        event("buyback.lapsed", "Jordan Out did not buy back after week 2; out", minutesAgo: 60 * 26 + 1,
+              role: "system", entry: "jordan-out", label: "Jordan Out", week: 2),
+        event("entry.claimed", "pat@example.com claimed Pat Buyer", minutesAgo: 60 * 50,
+              role: "player", email: "pat@example.com", entry: "pat-buyer", label: "Pat Buyer"),
+        event("system.syncFailed", "Hourly sync failed: Odds API returned 429", minutesAgo: 60 * 51, role: "system"),
+        event("commissioner.added", "Commissioner added ralph@example.com as a commissioner", minutesAgo: 60 * 72,
+              role: "commissioner", email: "wcastellano13@gmail.com"),
+    ]
 
     static let knockedOut = entry(
         id: "pat-buyer",
@@ -195,6 +223,31 @@ enum PreviewData {
             isCommissioner: isCommissioner,
             buybackElection: buybackElection,
             buybackUnpaid: buybackUnpaid
+        )
+    }
+
+    private static func event(
+        _ type: String,
+        _ summary: String,
+        minutesAgo: Double,
+        role: String,
+        email: String? = nil,
+        entry: String? = nil,
+        label: String? = nil,
+        week: Int? = nil,
+        team: String? = nil
+    ) -> ActivityEvent {
+        ActivityEvent(
+            id: "\(type)-\(Int(minutesAgo))",
+            at: Date().addingTimeInterval(-minutesAgo * 60),
+            type: type,
+            summary: summary,
+            actorRole: role,
+            actorEmail: email,
+            entryId: entry,
+            entryLabel: label,
+            week: week,
+            team: team
         )
     }
 

@@ -69,5 +69,12 @@ service cloud.firestore {
     match /claimAttempts/{userId} {
       allow read, write: if false;
     }
+
+    // The commissioner activity log. Written only by Cloud Functions; the
+    // Commissioner tab reads the newest few hundred events.
+    match /activityLog/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }
