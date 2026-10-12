@@ -1,5 +1,6 @@
 import { FieldValue, getFirestore, type DocumentData, type DocumentReference } from "firebase-admin/firestore";
 import { publishLockedPicks } from "./picks";
+import { logEvent, logEventInBatch, SYSTEM_ACTOR, type LogActor } from "./log";
 
 const SEASON = 2026;
 const BUYBACK_THROUGH_WEEK = 6;
@@ -70,7 +71,7 @@ export interface GradeRunSummary {
   reports: CloseWeekReport[];
 }
 
-export async function gradeClosedWeeks(now = Date.now()): Promise<GradeRunSummary> {
+export async function gradeClosedWeeks(now = Date.now(), actor: LogActor = SYSTEM_ACTOR): Promise<GradeRunSummary> {
   const db = getFirestore();
   const pool = await db.collection("pool").doc(String(SEASON)).get();
   const stored = Number(pool.get("closedThroughWeek"));
@@ -91,7 +92,7 @@ export async function gradeClosedWeeks(now = Date.now()): Promise<GradeRunSummar
     const lastKickoff = lastKickoffByWeek.get(week);
     if (lastKickoff === undefined || lastKickoff > now) break;
     try {
-      const report = await closePoolWeek(week, true, now);
+      const report = await closePoolWeek(week, true, now, actor);
       reports.push(report);
       // A week with a game that has kicked off but is not final yet holds the
       // line. Moving on would let a later, clean week advance closedThroughWeek
@@ -106,7 +107,12 @@ export async function gradeClosedWeeks(now = Date.now()): Promise<GradeRunSummar
   return { closedThroughWeek, reports };
 }
 
-export async function closePoolWeek(week: number, apply: boolean, now = Date.now()): Promise<CloseWeekReport> {
+export async function closePoolWeek(
+  week: number,
+  apply: boolean,
+  now = Date.now(),
+  actor: LogActor = SYSTEM_ACTOR
+): Promise<CloseWeekReport> {
   const db = getFirestore();
   if (apply) await publishLockedPicks(now);
 
@@ -217,6 +223,19 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
             };
             revived = true;
           }
+          if (apply) {
+            logEventInBatch(batch, {
+              type: "buyback.confirmed",
+              summary: `${label} bought back after week ${eliminatedWeek}: the week ${week} pick confirms it`,
+              actor,
+              entryId: doc.id,
+              entryLabel: label,
+              week: eliminatedWeek,
+              team,
+              details: { pickWeek: week, elected: data.buybackElection === "in", revived },
+            });
+            writes += 1;
+          }
         } else {
           if (report.examples.length < 12) {
             report.examples.push(
@@ -225,7 +244,7 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
                 : `${label}: did not buy back after week ${eliminatedWeek}`
             );
           }
-          await resolveLapsedBuyback(doc.ref, buybackRows, eliminatedWeek);
+          await resolveLapsedBuyback(doc.ref, buybackRows, eliminatedWeek, label, data.buybackElection === "in");
           continue;
         }
       }
@@ -251,7 +270,7 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
     if (!team) {
       report.missingPicks += 1;
       if (report.examples.length < 12) report.examples.push(`${label}: no pick`);
-      await markLoss(doc.ref, undefined, undefined, confirmFields);
+      await markLoss(doc.ref, label, undefined, undefined, confirmFields);
       continue;
     }
 
@@ -270,9 +289,27 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
 
     report.losses += 1;
     if (report.examples.length < 12) report.examples.push(`${label}: ${team} lost`);
-    await markLoss(doc.ref, team, data, confirmFields);
+    await markLoss(doc.ref, label, team, data, confirmFields);
   }
   await flush(true);
+
+  if (apply) {
+    await logEvent({
+      type: "system.weekGraded",
+      summary: `Week ${week} graded: ${report.wins} wins, ${report.losses} losses, `
+        + `${report.missingPicks} no pick, ${report.ungraded} not final, ${report.lapsedBuybacks} buybacks lapsed`,
+      actor,
+      week,
+      details: {
+        wins: report.wins,
+        losses: report.losses,
+        missingPicks: report.missingPicks,
+        ungraded: report.ungraded,
+        lapsedBuybacks: report.lapsedBuybacks,
+        updated: report.updated,
+      },
+    });
+  }
 
   if (apply && report.ungraded === 0) {
     // Monotonic: the stepper permits any week, so a plain assignment moved the
@@ -293,7 +330,9 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
   async function resolveLapsedBuyback(
     ref: DocumentReference,
     rows: unknown[],
-    eliminatedWeek: number
+    eliminatedWeek: number,
+    label: string,
+    elected: boolean
   ) {
     report.lapsedBuybacks += 1;
     report.updated += 1;
@@ -312,6 +351,18 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
       buybackCount: buybacks.length,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
+    writes += 1;
+    logEventInBatch(batch, {
+      type: "buyback.lapsed",
+      summary: elected
+        ? `${label} elected to buy back after week ${eliminatedWeek} but made no week ${week} pick; out`
+        : `${label} did not buy back after week ${eliminatedWeek}; out`,
+      actor,
+      entryId: ref.id,
+      entryLabel: label,
+      week: eliminatedWeek,
+      details: { elected, pickWeek: week },
+    });
     writes += 1;
     await flush();
   }
@@ -355,6 +406,7 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
 
   async function markLoss(
     ref: DocumentReference,
+    label: string,
     team?: string,
     data?: DocumentData,
     confirmFields: DocumentData | null = null
@@ -386,6 +438,20 @@ export async function closePoolWeek(week: number, apply: boolean, now = Date.now
       batch.delete(ref.collection("privatePicks").doc(String(week)));
       writes += 1;
     }
+    const fate = throughBuyback ? "buyback open" : "out for the season";
+    logEventInBatch(batch, {
+      type: throughBuyback ? "entry.knockedOut" : "entry.eliminated",
+      summary: team
+        ? `${label} lost week ${week} with ${team}; ${fate}`
+        : `${label} made no pick for week ${week}; ${fate}`,
+      actor,
+      entryId: ref.id,
+      entryLabel: label,
+      week,
+      team,
+      details: { buybackOpen: throughBuyback, missingPick: !team },
+    });
+    writes += 1;
     await flush();
   }
 }

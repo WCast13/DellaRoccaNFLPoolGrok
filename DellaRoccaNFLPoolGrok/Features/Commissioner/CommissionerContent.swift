@@ -32,6 +32,8 @@ struct CommissionerContent: View {
     @State private var filter: CommissionerEntryFilter = .active
     /// The entry whose name was tapped; drives the pick sheet.
     @State private var editing: ClaimedEntry?
+    /// The Tools screen: activity log, commissioners, grade now.
+    @State private var showingTools = false
 
     /// The grid's rows: the chosen segment, narrowed by the search field.
     private var filtered: [ClaimedEntry] {
@@ -53,6 +55,21 @@ struct CommissionerContent: View {
             }
             .navigationTitle("Commissioner")
             .searchable(text: $query, prompt: "Entry name")
+            .toolbar {
+                if session.isAdmin {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showingTools = true
+                        } label: {
+                            Label("Tools", systemImage: "wrench.and.screwdriver")
+                        }
+                        .accessibilityHint("Activity log, commissioners, and grade now")
+                    }
+                }
+            }
+            .navigationDestination(isPresented: $showingTools) {
+                CommissionerToolsView(session: session)
+            }
         }
         .onAppear {
             initializeWeek()
@@ -123,10 +140,6 @@ struct CommissionerContent: View {
                 Text(trimmedQuery.isEmpty ? "Picks through week \(week)" : "Matching entries")
             }
             .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-
-            GradeNowSection(session: session)
-
-            CommissionerAccessSection(session: session)
 
             if session.notice != nil || session.errorMessage != nil {
                 Section {

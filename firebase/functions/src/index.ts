@@ -9,6 +9,7 @@ import { closePoolWeek, gradeClosedWeeks } from "./close";
 import { gradeImportedWeeks } from "./grade";
 import { publishLockedPicks } from "./picks";
 import { runSeasonSync } from "./sports";
+import { actorFrom, logEvent, SYSTEM_ACTOR, type LogActor } from "./log";
 
 const BOOTSTRAP_COMMISSIONER_EMAILS = ["wcastellano13@gmail.com"];
 
@@ -127,6 +128,16 @@ export const claimEntry = onCall(async (request) => {
   if ("error" in claim && claim.error) {
     throw new HttpsError(claim.code, claim.error);
   }
+  if ("label" in claim) {
+    const actor = actorFrom(auth);
+    await logEvent({
+      type: "entry.claimed",
+      summary: `${actor.email ?? "A player"} claimed ${claim.label}`,
+      actor,
+      entryId: claim.entryId,
+      entryLabel: claim.label,
+    });
+  }
   return claim;
 });
 
@@ -147,7 +158,7 @@ export const submitPick = onCall(async (request) => {
     .where("teams", "array-contains", team)
     .limit(1);
 
-  await db.runTransaction(async (tx) => {
+  const outcome = await db.runTransaction(async (tx) => {
     const entry = await tx.get(entryRef);
     const games = await tx.get(gameQuery);
     const privatePicks = await tx.get(entryRef.collection("privatePicks"));
@@ -233,7 +244,7 @@ export const submitPick = onCall(async (request) => {
         updatedAt: FieldValue.serverTimestamp(),
       });
       tx.delete(privateRef);
-      return;
+      return { label: String(data.label ?? entryId), previous, locked, admin };
     }
 
     // An admin may change a pick whose game already kicked off to a team that
@@ -262,7 +273,37 @@ export const submitPick = onCall(async (request) => {
       week,
       updatedAt: FieldValue.serverTimestamp(),
     });
+    return { label: String(data.label ?? entryId), previous, locked, admin };
   });
+
+  // Saving the same team again is not a change and is not logged.
+  if (outcome.previous !== team) {
+    const actor = actorFrom(auth);
+    const suffix = (outcome.admin ? " by a commissioner" : "") + (outcome.locked ? " after kickoff" : "");
+    const details = { byCommissioner: outcome.admin, afterKickoff: outcome.locked };
+    await logEvent(outcome.previous
+      ? {
+        type: "pick.changed",
+        summary: `${outcome.label} changed week ${week} from ${outcome.previous} to ${team}${suffix}`,
+        actor,
+        entryId,
+        entryLabel: outcome.label,
+        week,
+        team,
+        previousTeam: outcome.previous,
+        details,
+      }
+      : {
+        type: "pick.submitted",
+        summary: `${outcome.label} picked ${team} for week ${week}${suffix}`,
+        actor,
+        entryId,
+        entryLabel: outcome.label,
+        week,
+        team,
+        details,
+      });
+  }
 
   return { entryId, week, team };
 });
@@ -368,7 +409,7 @@ export const electBuyback = onCall(async (request) => {
         buybackCount: buybacks.length,
         updatedAt: FieldValue.serverTimestamp(),
       });
-      return { entryId, buyBackIn: true, pickWeek };
+      return { entryId, buyBackIn: true, pickWeek, eliminatedWeek, label: String(data.label ?? entryId) };
     }
 
     // Backing out: drop the provisional row, the fee, and any pick made for the
@@ -387,10 +428,21 @@ export const electBuyback = onCall(async (request) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
     if (privateDoc.exists) tx.delete(privateRef);
-    return { entryId, buyBackIn: false, pickWeek };
+    return { entryId, buyBackIn: false, pickWeek, eliminatedWeek, label: String(data.label ?? entryId) };
   });
 
-  return result;
+  await logEvent({
+    type: "buyback.elected",
+    summary: result.buyBackIn
+      ? `${result.label} elected to buy back in after week ${result.eliminatedWeek}`
+      : `${result.label} elected to stay out after week ${result.eliminatedWeek}`,
+    actor: actorFrom(auth),
+    entryId,
+    entryLabel: result.label,
+    week: result.eliminatedWeek,
+    details: { buyBackIn: result.buyBackIn, pickWeek: result.pickWeek },
+  });
+  return { entryId, buyBackIn: result.buyBackIn, pickWeek: result.pickWeek };
 });
 
 // Commissioner override: marks a player's elected buyback as paid.
@@ -399,10 +451,21 @@ export const markBuybackPaid = onCall(async (request) => {
   requireAdmin(auth);
   const entryId = String(request.data?.entryId ?? "");
   if (!entryId) throw new HttpsError("invalid-argument", "Choose an entry.");
-  await db.collection("entries").doc(entryId).set({
+  const ref = db.collection("entries").doc(entryId);
+  const entry = await ref.get();
+  if (!entry.exists) throw new HttpsError("not-found", "That entry is missing.");
+  await ref.set({
     buybackUnpaid: false,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+  const label = String(entry.get("label") ?? entryId);
+  await logEvent({
+    type: "buyback.feePaid",
+    summary: `Commissioner marked ${label}'s buyback fee paid`,
+    actor: actorFrom(auth),
+    entryId,
+    entryLabel: label,
+  });
   return { entryId };
 });
 
@@ -413,7 +476,7 @@ export const recordBuyback = onCall(async (request) => {
   if (!entryId) throw new HttpsError("invalid-argument", "Choose an entry.");
 
   const entryRef = db.collection("entries").doc(entryId);
-  await db.runTransaction(async (tx) => {
+  const recorded = await db.runTransaction(async (tx) => {
     const entry = await tx.get(entryRef);
     if (!entry.exists) throw new HttpsError("not-found", "That entry is missing.");
     const data = entry.data() as DocumentData;
@@ -438,20 +501,29 @@ export const recordBuyback = onCall(async (request) => {
       buybacks,
       updatedAt: FieldValue.serverTimestamp(),
     });
+    return { label: String(data.label ?? entryId), eliminatedWeek };
   });
 
+  await logEvent({
+    type: "buyback.recorded",
+    summary: `Commissioner recorded a buyback for ${recorded.label} after week ${recorded.eliminatedWeek}`,
+    actor: actorFrom(auth),
+    entryId,
+    entryLabel: recorded.label,
+    week: recorded.eliminatedWeek,
+  });
   return { entryId };
 });
 
 const ODDS_REFRESH_MS = 12 * 60 * 60 * 1000;
 
-async function syncSeasonFromSecrets(includeOdds: boolean) {
+async function syncSeasonFromSecrets(includeOdds: boolean, actor: LogActor, trigger: "scheduled" | "manual") {
   // Scores and kickoffs first, then publish against them, then grade. The old
   // order published picks before refreshing the schedule, so a game moved to a
   // later kickoff could have its pick published early.
   const result = await runSeasonSync(apiSportsKey.value(), includeOdds ? oddsApiKey.value() : "");
   const publishedPicks = await publishLockedPicks();
-  const run = await gradeClosedWeeks();
+  const run = await gradeClosedWeeks(Date.now(), actor);
   const graded = run.reports;
   for (const report of graded) {
     console.log(
@@ -475,9 +547,37 @@ async function syncSeasonFromSecrets(includeOdds: boolean) {
     `graded [${graded.map((report) => report.week).join(", ") || "none"}], ` +
     `unmatched teams ${result.unmatchedTeams.length}`
   );
+  await logEvent({
+    type: "system.sync",
+    summary: `${trigger === "scheduled" ? "Hourly sync" : "Sync and grade"} ran: `
+      + `${result.games} games, ${result.spreads} spreads, ${publishedPicks} picks published, `
+      + `graded ${graded.map((report) => `week ${report.week}`).join(", ") || "nothing"}`,
+    actor,
+    details: {
+      trigger,
+      includeOdds,
+      games: result.games,
+      spreads: result.spreads,
+      publishedPicks,
+      closedThroughWeekBefore: run.closedThroughWeek,
+      closedThroughWeekAfter: closedThroughWeek,
+      gradedWeeks: graded.map((report) => report.week),
+      unmatchedTeams: result.unmatchedTeams.length,
+    },
+  });
   // The full reports go back to the caller so the app's "grade now" can show
   // exactly what a run did, per week, instead of only logging it.
   return { ...result, publishedPicks, graded, closedThroughWeek };
+}
+
+async function logSyncFailure(error: unknown, actor: LogActor, trigger: "scheduled" | "manual") {
+  const message = error instanceof Error ? error.message : String(error);
+  await logEvent({
+    type: "system.syncFailed",
+    summary: `${trigger === "scheduled" ? "Hourly sync" : "Sync and grade"} failed: ${message}`,
+    actor,
+    details: { trigger },
+  });
 }
 
 // The hourly job on demand. The commissioner tab's "Sync scores and grade now"
@@ -489,7 +589,13 @@ async function syncSeasonFromSecrets(includeOdds: boolean) {
 export const syncSeason = onCall({ secrets: [apiSportsKey, oddsApiKey], timeoutSeconds: 300 }, async (request) => {
   const auth = requireUser(request.auth);
   requireAdmin(auth);
-  return syncSeasonFromSecrets(true);
+  const actor = actorFrom(auth);
+  try {
+    return await syncSeasonFromSecrets(true, actor, "manual");
+  } catch (error) {
+    await logSyncFailure(error, actor, "manual");
+    throw error;
+  }
 });
 
 export const syncSeasonScheduled = onSchedule({
@@ -500,7 +606,12 @@ export const syncSeasonScheduled = onSchedule({
   const pool = await db.collection("pool").doc("2026").get();
   const lastOdds = pool.get("oddsSyncedAt")?.toMillis?.() ?? 0;
   const includeOdds = Date.now() - lastOdds > ODDS_REFRESH_MS;
-  await syncSeasonFromSecrets(includeOdds);
+  try {
+    await syncSeasonFromSecrets(includeOdds, SYSTEM_ACTOR, "scheduled");
+  } catch (error) {
+    await logSyncFailure(error, SYSTEM_ACTOR, "scheduled");
+    throw error;
+  }
 });
 
 export const gradeWeeks = onCall(async (request) => {
@@ -509,7 +620,14 @@ export const gradeWeeks = onCall(async (request) => {
   // Defaulted to true, which meant a bare call rewrote terminal status and
   // buyback history for the whole pool. Require the caller to say so.
   const apply = request.data?.apply === true;
-  return gradeImportedWeeks(apply);
+  const report = await gradeImportedWeeks(apply);
+  await logEvent({
+    type: "system.gradeWeeks",
+    summary: `Commissioner ran the week 1–3 importer grader${apply ? "" : " as a preview"}`,
+    actor: actorFrom(auth),
+    details: { apply },
+  });
+  return report;
 });
 
 // Reflect a user's commissioner status onto every entry they own, so the Pool
@@ -608,6 +726,12 @@ export const removeCommissionerEmail = onCall(async (request) => {
   } catch {
     // No account for that email; removing it from the list is enough.
   }
+  await logEvent({
+    type: "commissioner.removed",
+    summary: `Commissioner removed ${email} from the commissioners${revoked ? " and revoked access now" : ""}`,
+    actor: actorFrom(auth),
+    details: { email, revoked },
+  });
   return { email, revoked };
 });
 
@@ -656,6 +780,12 @@ export const addCommissionerEmail = onCall(async (request) => {
   } catch {
     // No account for that email yet; nothing to flag.
   }
+  await logEvent({
+    type: "commissioner.added",
+    summary: `Commissioner added ${email} as a commissioner`,
+    actor: actorFrom(auth),
+    details: { email },
+  });
   return { email };
 });
 
@@ -670,7 +800,7 @@ export const closeWeek = onCall({ timeoutSeconds: 120 }, async (request) => {
     throw new HttpsError("invalid-argument", "Choose a week.");
   }
   try {
-    return await closePoolWeek(week, request.data?.apply === true);
+    return await closePoolWeek(week, request.data?.apply === true, Date.now(), actorFrom(auth));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not close that week.";
     throw new HttpsError("failed-precondition", message);
@@ -684,7 +814,7 @@ export const declineBuyback = onCall(async (request) => {
   if (!entryId) throw new HttpsError("invalid-argument", "Choose an entry.");
 
   const entryRef = db.collection("entries").doc(entryId);
-  await db.runTransaction(async (tx) => {
+  const declined = await db.runTransaction(async (tx) => {
     const entry = await tx.get(entryRef);
     if (!entry.exists) throw new HttpsError("not-found", "That entry is missing.");
     if (entry.get("status") !== "pendingBuyback") {
@@ -695,7 +825,36 @@ export const declineBuyback = onCall(async (request) => {
       buybackDeclined: true,
       updatedAt: FieldValue.serverTimestamp(),
     });
+    const eliminatedWeek = Number(entry.get("eliminatedWeek"));
+    return {
+      label: String(entry.get("label") ?? entryId),
+      eliminatedWeek: Number.isInteger(eliminatedWeek) ? eliminatedWeek : undefined,
+    };
   });
 
+  await logEvent({
+    type: "buyback.declined",
+    summary: `Commissioner declined ${declined.label}'s buyback`
+      + (declined.eliminatedWeek !== undefined ? ` after week ${declined.eliminatedWeek}` : ""),
+    actor: actorFrom(auth),
+    entryId,
+    entryLabel: declined.label,
+    week: declined.eliminatedWeek,
+  });
   return { entryId };
+});
+
+// The app calls this right after a successful Apple sign-in so logins show in
+// the activity log. Nothing depends on it, and the app ignores a failure.
+export const logSignIn = onCall(async (request) => {
+  const auth = requireUser(request.auth);
+  const actor = actorFrom(auth);
+  const name = typeof auth.token.name === "string" && auth.token.name.length > 0 ? auth.token.name : undefined;
+  await logEvent({
+    type: "auth.signIn",
+    summary: `${actor.email ?? name ?? "A player"} signed in${actor.role === "commissioner" ? " (commissioner)" : ""}`,
+    actor,
+    details: { provider: String(request.data?.provider ?? "apple"), name },
+  });
+  return { ok: true };
 });

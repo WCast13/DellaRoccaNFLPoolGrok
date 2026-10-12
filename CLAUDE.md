@@ -62,6 +62,10 @@ Adding a mutation means adding a callable in `firebase/functions/src/index.ts` a
 
 If you add a session method that touches Firebase, you must add an `if isPreview { ... }` branch or every `#Preview` using it will hang or crash. Fixtures live in `Preview/PreviewData.swift` (`signedOut()`, `loading()`, `claim()`, `player()`, `commissioner()`). Previews are the de facto test suite here — add them for new views, and keep the existing ones compiling.
 
+### The activity log is written by functions, never by the client
+
+`activityLog` is the commissioner's audit trail. Every callable that changes something logs what it did through `logEvent` in `firebase/functions/src/log.ts` (picks, claims, buyback steps, access changes, sign-ins via `logSignIn`), and the close run logs per-week summaries plus per-entry knockouts, confirmations, and lapses through the same batch it writes entries with. A new mutation must log too; the summary line is what the commissioner reads, so write it in plain past tense naming the entry. The client only listens (`watchActivityLog()`, admin only, newest 300) and buckets events by the type's prefix in `ActivityEvent.category`.
+
 ### Pick visibility: private before kickoff, public after
 
 A pick lives in `entries/{id}/privatePicks/{week}` until its game kicks off, then the backend copies it onto `entries/{id}.picks` + `.usedTeams` and deletes the private doc (`publishLockedPicks`).
@@ -79,7 +83,7 @@ These are mutually exclusive (`watchPrivatePicks` early-returns when `isAdmin`).
 
 Admin status also drives UI: the Commissioner tab only exists when `session?.isAdmin == true`.
 
-The Commissioner tab (`CommissionerContent`) is one `List`: week header and slate, the week summary (`WeekSummary.make` mirrors the server's win/loss rule — a tie is a loss), an Active/Eliminated segmented filter over the entries grid, then grade-now and access sections. Tapping a name in the grid opens `CommissionerPickSheet` for the week the header shows; that sheet is the only per-entry commissioner surface (picks after kickoff, buyback overrides, fee paid).
+The Commissioner tab (`CommissionerContent`) is one `List`: week header and slate, the week summary (`WeekSummary.make` mirrors the server's win/loss rule — a tie is a loss), and an Active/Eliminated segmented filter over the entries grid. A Tools button in the toolbar pushes `CommissionerToolsView`, which holds the activity log, the commissioners list, and grade-now. Tapping a name in the grid opens `CommissionerPickSheet` for the week the header shows; that sheet is the only per-entry commissioner surface (picks after kickoff, buyback overrides, fee paid).
 
 ### Status and notices
 
