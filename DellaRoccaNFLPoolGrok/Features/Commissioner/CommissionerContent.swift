@@ -46,7 +46,7 @@ struct CommissionerContent: View {
         NavigationStack {
             Group {
                 if !session.isSignedIn {
-                    message("Sign in with Apple on My Entries. Commissioner tools appear on accounts a commissioner has allowed.")
+                    message("Commissioner tools appear on accounts a commissioner has allowed.")
                 } else if !session.isAdmin {
                     message("\(session.accountLabel) is not a commissioner yet. A commissioner can add this Apple account's email.")
                 } else {

@@ -41,6 +41,12 @@ cd firebase && firebase deploy --only firestore:rules
 
 ## Architecture
 
+### Sign-in has four providers, all through Firebase Auth
+
+Apple (native), Google, phone (SMS), and email + password. `Features/Auth/LoginView.swift` is the whole app while signed out: `ContentView` shows it instead of the `TabView`, so no tab exists until Firebase reports a user, and signing out returns to it. Every path ends in the same `Auth.auth().signIn` and then `recordSignIn(provider:)`, which calls the `logSignIn` function so the commissioner log shows it. Google uses Firebase's own OAuth web sheet (`OAuthProvider(providerID: "google.com")`), not the Google SDK, so the app carries no client id; phone verification falls back to a reCAPTCHA web sheet when push is not set up, which is always in the simulator. Both sheets return through the URL scheme in the root `Info.plist` (the encoded `GOOGLE_APP_ID`), handled by `Auth.auth().canHandle` in `ContentView`. Keep that scheme and that handler if you touch either file. A phone-only account has no email, so it can never match the commissioner allowlist.
+
+Console prerequisites, done once per project: Email/Password and Phone are enabled; **Google must be enabled in Firebase console → Authentication → Sign-in method**, which creates the OAuth client the web sheet uses. For phone sign-in on the simulator, add a test number under Phone → "Phone numbers for testing".
+
 ### `PlayerSession` is the whole app
 
 `Session/PlayerSession.swift` (~680 lines) is the single `@Observable` object holding all state, all Firestore listeners, and every Cloud Functions call. There is no separate view-model, repository, or service layer. Views read it directly.

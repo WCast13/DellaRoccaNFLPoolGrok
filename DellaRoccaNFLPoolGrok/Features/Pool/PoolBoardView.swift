@@ -47,7 +47,7 @@ struct PoolBoardView: View {
                     ContentUnavailableView(
                         "Sign in to see the pool",
                         systemImage: "person.crop.circle",
-                        description: Text("The standings come from the live pool. Sign in on My Entries.")
+                        description: Text("The standings come from the live pool.")
                     )
                 } else if session?.standingsLoaded != true {
                     ProgressView("Loading the pool")

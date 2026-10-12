@@ -231,6 +231,13 @@ final class PlayerSession {
     /// The newest activity-log events, newest first. Admin only.
     var activityLog: [ActivityEvent] = []
     var activityLogLoaded = false
+    /// True while a sign-in call is in flight. The login page disables its
+    /// buttons on it so a double tap cannot start two flows.
+    var isAuthenticating = false
+    /// The id Firebase returned for the SMS it sent; set until the code is
+    /// confirmed. Also kept in UserDefaults in case the app is backgrounded
+    /// while the user reads the text.
+    private(set) var phoneVerificationID: String?
 
     /// Standings partitioned by board status. Cached and recomputed only when
     /// `standings` changes so SwiftUI bodies (e.g. the searchable pool board)
@@ -447,14 +454,182 @@ final class PlayerSession {
             )
             _ = try await Auth.auth().signIn(with: firebaseCredential)
             errorMessage = nil
-            // Put the sign-in on the commissioner log. Best effort: a failure
-            // here must not undo a successful sign-in, so the result is ignored.
-            Task {
-                _ = try? await self.functionsClient().httpsCallable("logSignIn").call(["provider": "apple"])
-            }
+            recordSignIn(provider: "apple")
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: Email, phone, and Google sign-in
+
+    func signIn(email: String, password: String) async {
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty, !password.isEmpty else {
+            errorMessage = "Enter your email and password."
+            return
+        }
+        if isPreview { previewSignIn(as: email); return }
+        await authenticate(provider: "password") {
+            _ = try await Auth.auth().signIn(withEmail: email, password: password)
+        }
+    }
+
+    func createAccount(email: String, password: String) async {
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty else {
+            errorMessage = "Enter the email you want to sign in with."
+            return
+        }
+        guard password.count >= 6 else {
+            errorMessage = "Choose a password of at least 6 characters."
+            return
+        }
+        if isPreview { previewSignIn(as: email); return }
+        await authenticate(provider: "password") {
+            _ = try await Auth.auth().createUser(withEmail: email, password: password)
+        }
+    }
+
+    func sendPasswordReset(email: String) async {
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty else {
+            errorMessage = "Enter your email first, then tap Forgot password."
+            return
+        }
+        if isPreview {
+            notice = "Check \(email) for a link to reset your password."
+            errorMessage = nil
+            return
+        }
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+        do {
+            try await Auth.auth().sendPasswordReset(withEmail: email)
+            notice = "Check \(email) for a link to reset your password."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            notice = nil
+        }
+    }
+
+    /// Texts a code to the number. Returns true when the code is on its way,
+    /// so the login page can switch to the code field. On a device without
+    /// push set up, and always in the simulator, Firebase first shows a
+    /// reCAPTCHA sheet; the URL scheme in Info.plist brings it back.
+    func startPhoneSignIn(phoneNumber: String) async -> Bool {
+        guard let number = Self.e164(phoneNumber) else {
+            errorMessage = "Enter a phone number with its area code."
+            return false
+        }
+        if isPreview {
+            phoneVerificationID = "preview"
+            notice = "We texted a code to \(number)."
+            errorMessage = nil
+            return true
+        }
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+        do {
+            let id = try await PhoneAuthProvider.provider().verifyPhoneNumber(number, uiDelegate: nil)
+            phoneVerificationID = id
+            UserDefaults.standard.set(id, forKey: Self.verificationKey)
+            notice = "We texted a code to \(number)."
+            errorMessage = nil
+            return true
+        } catch {
+            if Self.isCancellation(error) { return false }
+            errorMessage = error.localizedDescription
+            notice = nil
+            return false
+        }
+    }
+
+    func confirmPhoneCode(_ code: String) async {
+        let code = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard code.count >= 6 else {
+            errorMessage = "Enter the 6-digit code from the text."
+            return
+        }
+        if isPreview { previewSignIn(as: "Signed in with phone"); return }
+        guard let id = phoneVerificationID ?? UserDefaults.standard.string(forKey: Self.verificationKey) else {
+            errorMessage = "Request a new code first."
+            return
+        }
+        await authenticate(provider: "phone") {
+            let credential = PhoneAuthProvider.provider().credential(withVerificationID: id, verificationCode: code)
+            _ = try await Auth.auth().signIn(with: credential)
+        }
+        if errorMessage == nil {
+            phoneVerificationID = nil
+            UserDefaults.standard.removeObject(forKey: Self.verificationKey)
+        }
+    }
+
+    /// Google through Firebase's own OAuth sheet. No Google SDK, no client
+    /// id in the app: the project's Google provider, enabled in the Firebase
+    /// console, supplies the OAuth client, and the sheet returns through the
+    /// URL scheme in Info.plist.
+    func signInWithGoogle() async {
+        if isPreview { previewSignIn(as: "player@gmail.com"); return }
+        await authenticate(provider: "google") {
+            let provider = OAuthProvider(providerID: "google.com")
+            provider.customParameters = ["prompt": "select_account"]
+            let credential = try await provider.credential(with: nil)
+            _ = try await Auth.auth().signIn(with: credential)
+        }
+    }
+
+    /// Runs one sign-in flow with the busy flag held, clears stale status on
+    /// success, and puts the sign-in on the commissioner log.
+    private func authenticate(provider: String, _ work: () async throws -> Void) async {
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+        do {
+            try await work()
+            errorMessage = nil
+            notice = nil
+            recordSignIn(provider: provider)
+        } catch {
+            // Closing the web sheet is a choice, not a failure to report.
+            if Self.isCancellation(error) { return }
+            errorMessage = error.localizedDescription
+            notice = nil
+        }
+    }
+
+    /// Put the sign-in on the commissioner log. Best effort: a failure here
+    /// must not undo a successful sign-in, so the result is ignored.
+    private func recordSignIn(provider: String) {
+        Task {
+            _ = try? await self.functionsClient().httpsCallable("logSignIn").call(["provider": provider])
+        }
+    }
+
+    private func previewSignIn(as label: String) {
+        userID = "preview-user"
+        accountLabel = label
+        errorMessage = nil
+        notice = nil
+    }
+
+    private static let verificationKey = "phoneAuthVerificationID"
+
+    private nonisolated static func isCancellation(_ error: Error) -> Bool {
+        (error as NSError).code == AuthErrorCode.webContextCancelled.rawValue
+    }
+
+    /// E.164 for Firebase: digits only behind a plus. Ten digits are read as
+    /// a US number, as is eleven starting with 1; anything else keeps the
+    /// country code the user typed.
+    nonisolated static func e164(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digits = trimmed.filter(\.isNumber)
+        guard digits.count >= 10 else { return nil }
+        if trimmed.hasPrefix("+") { return "+" + digits }
+        if digits.count == 10 { return "+1" + digits }
+        if digits.count == 11, digits.hasPrefix("1") { return "+" + digits }
+        return "+" + digits
     }
 
     private func watchPool() {
@@ -901,8 +1076,10 @@ final class PlayerSession {
     }
 
     private static func accountLabel(for user: User?) -> String {
-        if let email = user?.email, !email.isEmpty { return email }
-        return user == nil ? "" : "Signed in with Apple"
+        guard let user else { return "" }
+        if let email = user.email, !email.isEmpty { return email }
+        if let phone = user.phoneNumber, !phone.isEmpty { return phone }
+        return "Signed in"
     }
 
     private static func randomNonce(length: Int = 32) -> String {

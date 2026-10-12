@@ -14,10 +14,6 @@ struct MyEntriesView: View {
 }
 
 #if DEBUG
-#Preview("Sign in") {
-    MyEntriesView(session: PreviewData.signedOut())
-}
-
 #Preview("Claim a PIN") {
     MyEntriesView(session: PreviewData.claim())
 }

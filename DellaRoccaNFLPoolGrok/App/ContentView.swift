@@ -1,5 +1,6 @@
-import SwiftUI
+import FirebaseAuth
 import FirebaseCore
+import SwiftUI
 
 @main
 struct MyApp: App {
@@ -34,23 +35,16 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView(selection: $tab) {
-            PoolBoardView(session: session)
-                .tabItem {
-                    Label("Pool", systemImage: "list.bullet")
-                }
-                .tag(AppTab.pool)
-            MyEntriesView(session: session)
-                .tabItem {
-                    Label("My Entries", systemImage: "person.crop.circle")
-                }
-                .tag(AppTab.entries)
-            if session?.isAdmin == true {
-                CommissionerView(session: session)
-                    .tabItem {
-                        Label("Commissioner", systemImage: "checkmark.shield")
-                    }
-                    .tag(AppTab.commissioner)
+        // The login page is the whole app until Firebase reports a user. A
+        // persisted session is known synchronously when PlayerSession is
+        // created, so a returning user never sees the login page flash.
+        Group {
+            if let session, session.isSignedIn {
+                tabs
+            } else if let session {
+                LoginView(session: session)
+            } else {
+                ProgressView("Opening the pool")
             }
         }
         .task {
@@ -72,6 +66,33 @@ struct ContentView: View {
             }
         }
         .onAppear(perform: openEntriesIfSignedIn)
+        .onOpenURL { url in
+            // Google sign-in and the phone reCAPTCHA check run in a web sheet
+            // that returns through the URL scheme in Info.plist.
+            _ = Auth.auth().canHandle(url)
+        }
+    }
+
+    private var tabs: some View {
+        TabView(selection: $tab) {
+            PoolBoardView(session: session)
+                .tabItem {
+                    Label("Pool", systemImage: "list.bullet")
+                }
+                .tag(AppTab.pool)
+            MyEntriesView(session: session)
+                .tabItem {
+                    Label("My Entries", systemImage: "person.crop.circle")
+                }
+                .tag(AppTab.entries)
+            if session?.isAdmin == true {
+                CommissionerView(session: session)
+                    .tabItem {
+                        Label("Commissioner", systemImage: "checkmark.shield")
+                    }
+                    .tag(AppTab.commissioner)
+            }
+        }
     }
 
     private func openEntriesIfSignedIn() {
