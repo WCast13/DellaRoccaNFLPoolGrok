@@ -130,6 +130,36 @@ struct ActivityEvent: Identifiable, Hashable, Sendable {
     }
 }
 
+/// One commissioner pick on its way to the server. The Commissioner tab's
+/// pick sheet closes as soon as a team is tapped; the save runs from
+/// `PlayerSession.pickSaveQueue` in the background so the next entry can be
+/// opened at once.
+struct PendingPickSave: Identifiable, Hashable, Sendable {
+    enum State: Hashable, Sendable {
+        case queued
+        case saving
+        case failed(String)
+    }
+
+    let id: UUID
+    let entryID: String
+    let entryLabel: String
+    let week: Int
+    let team: String
+    var state: State
+
+    var isFailed: Bool {
+        if case .failed = state { return true }
+        return false
+    }
+
+    /// The server's or the network's reason, when the save failed.
+    var failure: String? {
+        if case .failed(let message) = state { return message }
+        return nil
+    }
+}
+
 /// The player's reversible choice after a knockout in weeks 1-6. Written by the
 /// `electBuyback` callable; cleared by the backend once the decision resolves.
 enum BuybackElection: String, Hashable, Sendable {
@@ -231,6 +261,9 @@ final class PlayerSession {
     /// The newest activity-log events, newest first. Admin only.
     var activityLog: [ActivityEvent] = []
     var activityLogLoaded = false
+    /// Commissioner picks waiting to reach the server, oldest first. A failed
+    /// save stays here until it is retried or dismissed.
+    var pickSaveQueue: [PendingPickSave] = []
     /// True while a sign-in call is in flight. The login page disables its
     /// buttons on it so a double tap cannot start two flows.
     var isAuthenticating = false
@@ -270,6 +303,7 @@ final class PlayerSession {
     private var privateListeners: [ListenerRegistration] = []
     private var subscribedPrivatePickIDs: Set<String> = []
     private var currentNonce: String?
+    private var isDrainingPickQueue = false
 
     init() {
         isPreview = false
@@ -300,6 +334,7 @@ final class PlayerSession {
         var notice: String?
         var errorMessage: String?
         var activityLog: [ActivityEvent] = []
+        var pickSaveQueue: [PendingPickSave] = []
     }
 
     init(preview sample: PreviewSample) {
@@ -318,15 +353,22 @@ final class PlayerSession {
         errorMessage = sample.errorMessage
         activityLog = sample.activityLog
         activityLogLoaded = sample.isAdmin
+        pickSaveQueue = sample.pickSaveQueue
     }
 #endif
 
     var isSignedIn: Bool { userID != nil }
 
+    /// Public picks, then the private ones, then any commissioner pick still
+    /// in the queue (queued or saving, not failed), so a tap shows on the
+    /// grid at once and stays there even if a snapshot lands mid-save.
     func picks(for entry: ClaimedEntry) -> [Int: String] {
         var combined = entry.picks
         for (week, team) in privatePicks[entry.id] ?? [:] {
             combined[week] = team
+        }
+        for item in pickSaveQueue where item.entryID == entry.id && !item.isFailed {
+            combined[item.week] = item.team
         }
         return combined
     }
@@ -335,6 +377,11 @@ final class PlayerSession {
         var used = entry.usedTeams
         for (week, team) in privatePicks[entry.id] ?? [:] {
             used[team] = week
+        }
+        for item in pickSaveQueue where item.entryID == entry.id && !item.isFailed {
+            // The queued team replaces whatever stood for that week.
+            used = used.filter { $0.value != item.week }
+            used[item.team] = item.week
         }
         return used
     }
@@ -416,6 +463,98 @@ final class PlayerSession {
         } catch {
             errorMessage = error.localizedDescription
             notice = nil
+        }
+    }
+
+    // MARK: Commissioner pick queue
+
+    /// Queues a commissioner's pick and returns at once. The pick shows on the
+    /// grid immediately through `picks(for:)`; the callable runs from
+    /// `drainPickQueue` in the background. A tap that supersedes a save not
+    /// yet started, or one that failed, replaces it, so only the last choice
+    /// for an entry's week reaches the server.
+    func enqueuePick(entryID: String, entryLabel: String, week: Int, team: String) {
+        errorMessage = nil
+        if let index = pickSaveQueue.firstIndex(where: {
+            $0.entryID == entryID && $0.week == week && $0.state != .saving
+        }) {
+            pickSaveQueue[index] = PendingPickSave(
+                id: pickSaveQueue[index].id,
+                entryID: entryID,
+                entryLabel: entryLabel,
+                week: week,
+                team: team,
+                state: .queued
+            )
+        } else {
+            pickSaveQueue.append(PendingPickSave(
+                id: UUID(),
+                entryID: entryID,
+                entryLabel: entryLabel,
+                week: week,
+                team: team,
+                state: .queued
+            ))
+        }
+        if isPreview {
+            privatePicks[entryID, default: [:]][week] = team
+            pickSaveQueue.removeAll { $0.entryID == entryID && $0.week == week }
+            notice = "Saved \(NFLTeam.shortName(for: team)) for \(entryLabel) in week \(week)."
+            return
+        }
+        Task { await drainPickQueue() }
+    }
+
+    /// Puts a failed save back in line.
+    func retryPickSave(_ id: UUID) {
+        guard let index = pickSaveQueue.firstIndex(where: { $0.id == id }),
+              pickSaveQueue[index].isFailed else { return }
+        pickSaveQueue[index].state = .queued
+        if isPreview {
+            let item = pickSaveQueue.remove(at: index)
+            privatePicks[item.entryID, default: [:]][item.week] = item.team
+            notice = "Saved \(NFLTeam.shortName(for: item.team)) for \(item.entryLabel) in week \(item.week)."
+            return
+        }
+        Task { await drainPickQueue() }
+    }
+
+    /// Drops a failed save. The grid already shows what the server has.
+    func dismissPickSave(_ id: UUID) {
+        pickSaveQueue.removeAll { $0.id == id && $0.isFailed }
+    }
+
+    /// The save waiting, in flight, or failed for this entry's week, if any.
+    func pendingPickSave(entryID: String, week: Int) -> PendingPickSave? {
+        pickSaveQueue.first { $0.entryID == entryID && $0.week == week }
+    }
+
+    /// Works the queue one callable at a time until nothing is left to send.
+    /// Only one drain runs; picks added while it runs are picked up by the
+    /// loop. A success writes the pick into `privatePicks` before leaving the
+    /// queue so the grid never flickers while the listener catches up; a
+    /// failure keeps the item, marked, for the tab's queue bar.
+    private func drainPickQueue() async {
+        guard !isDrainingPickQueue else { return }
+        isDrainingPickQueue = true
+        defer { isDrainingPickQueue = false }
+        while let index = pickSaveQueue.firstIndex(where: { $0.state == .queued }) {
+            pickSaveQueue[index].state = .saving
+            let item = pickSaveQueue[index]
+            do {
+                _ = try await functionsClient().httpsCallable("submitPick").call([
+                    "entryId": item.entryID,
+                    "week": item.week,
+                    "team": item.team,
+                ])
+                privatePicks[item.entryID, default: [:]][item.week] = item.team
+                pickSaveQueue.removeAll { $0.id == item.id }
+                notice = "Saved \(NFLTeam.shortName(for: item.team)) for \(item.entryLabel) in week \(item.week)."
+            } catch {
+                if let failed = pickSaveQueue.firstIndex(where: { $0.id == item.id }) {
+                    pickSaveQueue[failed].state = .failed(error.localizedDescription)
+                }
+            }
         }
     }
 

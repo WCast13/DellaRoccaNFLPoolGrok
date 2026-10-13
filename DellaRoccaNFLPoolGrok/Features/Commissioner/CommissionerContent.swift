@@ -30,7 +30,9 @@ struct CommissionerContent: View {
     @State private var week = 1
     @State private var didInitWeek = false
     @State private var filter: CommissionerEntryFilter = .active
-    /// The entry whose name was tapped; drives the pick sheet.
+    /// The entry whose name was tapped; drives the pick sheet. The sheet
+    /// closes on the tap that picks a team; the save itself runs from
+    /// `session.pickSaveQueue` and shows in the bar along the bottom.
     @State private var editing: ClaimedEntry?
     /// The Tools screen: activity log, commissioners, grade now.
     @State private var showingTools = false
@@ -146,6 +148,15 @@ struct CommissionerContent: View {
                     statusMessages
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            // Picks tapped in the sheet save from here in the background; the
+            // bar is empty, and so absent, once they have all landed.
+            PickSaveQueueBar(
+                items: session.pickSaveQueue,
+                onRetry: session.retryPickSave,
+                onDismiss: session.dismissPickSave
+            )
         }
     }
 
