@@ -10,7 +10,12 @@ struct MyEntriesContent: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if session.entries.isEmpty {
+                if !session.entriesLoaded {
+                    // The first render has a user and an empty list, so the
+                    // count alone would flash the claim form at a returning
+                    // player until Firestore delivers.
+                    ProgressView("Loading your entries")
+                } else if session.entries.isEmpty {
                     ClaimEntryForm(session: session, pin: $pin)
                 } else {
                     MyEntriesList(session: session, claiming: $claiming)
@@ -50,3 +55,17 @@ struct MyEntriesContent: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("Loading") {
+    MyEntriesContent(session: PreviewData.loading())
+}
+
+#Preview("Claim") {
+    MyEntriesContent(session: PreviewData.claim())
+}
+
+#Preview("Entries") {
+    MyEntriesContent(session: PreviewData.player())
+}
+#endif

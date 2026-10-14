@@ -43,6 +43,19 @@ struct EntryEditorView: View {
                         .frame(height: 100)
                     }
                 }
+            } else if entry.status == .active {
+                // Alive, but no game left to pick: the schedule has not arrived
+                // yet, or the last kickoff of the season has passed. Without
+                // this branch the editor showed only the entry's name.
+                Section {
+                    if session.gamesLoaded {
+                        Text("No games left to pick this season.")
+                    } else {
+                        ProgressView("Loading this week's games")
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             } else if entry.status != .active, !entry.hasOpenBuybackDecision {
                 Section {
                     Text(entry.statusLine)
@@ -68,7 +81,11 @@ struct EntryEditorView: View {
         }
 //        .navigationTitle("Week \(week ?? 0)") //TODO: Dont like this Title
         .onAppear {
-            selectedTeam = week.flatMap { picks[$0] }
+            // Seed from the saved pick only when nothing is chosen yet, so an
+            // unsaved selection survives a trip to another tab and back.
+            if selectedTeam == nil {
+                selectedTeam = week.flatMap { picks[$0] }
+            }
         }
         .onChange(of: entry.id) { _, _ in
             selectedTeam = week.flatMap { picks[$0] }
@@ -110,6 +127,18 @@ struct EntryEditorView: View {
     let entry = PreviewData.standings.first { $0.id == "pat-buyer" } ?? PreviewData.will
     return NavigationStack {
         EntryEditorView(session: PreviewData.player(), entry: entry)
+    }
+}
+
+#Preview("Season over") {
+    NavigationStack {
+        EntryEditorView(session: PreviewData.seasonOver(), entry: PreviewData.will)
+    }
+}
+
+#Preview("Schedule loading") {
+    NavigationStack {
+        EntryEditorView(session: PreviewData.scheduleLoading(), entry: PreviewData.will)
     }
 }
 #endif

@@ -22,9 +22,11 @@ struct TeamPickChip: View {
                     if let image = phase.image {
                         image.resizable().scaledToFit()
                     } else {
-                        Color.clear
+                        abbreviationLabel(for: team)
                     }
                 }
+            } else {
+                abbreviationLabel(for: team)
             }
         }
         .padding(.vertical, 3)
@@ -37,16 +39,21 @@ struct TeamPickChip: View {
                     .strokeBorder(Color.green, lineWidth: 2)
             }
         }
-//        .overlay(alignment: .topTrailing) {
-//            if selected {
-//                Image(systemName: "checkmark.circle.fill")
-//                    .font(.caption)
-//                    .foregroundStyle(.green)
-//                    .background(Circle().fill(.background))
-//            }
-//        }
         .opacity(dimmed ? 0.3 : 1)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// Names the team when there is no logo to show: the teams doc had no
+    /// usable URL, the image failed to load, or it is still on its way. Two
+    /// team-colored squares with nothing on them cannot be told apart, and the
+    /// save bar is the only other place the choice is spelled out.
+    private func abbreviationLabel(for team: NFLTeam?) -> some View {
+        Text(abbreviation)
+            .font(.system(size: size * 0.32, weight: .heavy, design: .rounded))
+            .foregroundStyle(team?.primaryColor.foreground ?? .white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -56,6 +63,15 @@ struct TeamPickChip: View {
         TeamPickChip(abbreviation: "JAX", selected: true, dimmed: false, logoURL: PreviewData.logos["JAX"])
         TeamPickChip(abbreviation: "SF", selected: false, dimmed: true, logoURL: PreviewData.logos["SF"])
         TeamPickChip(abbreviation: "DAL", selected: false, dimmed: true, logoURL: PreviewData.logos["DAL"])
+    }
+    .padding()
+}
+
+#Preview("No logo") {
+    HStack(spacing: 8) {
+        TeamPickChip(abbreviation: "NYG", selected: false, dimmed: false)
+        TeamPickChip(abbreviation: "DAL", selected: true, dimmed: false, logoURL: URL(string: "https://example.invalid/missing.png"))
+        TeamPickChip(abbreviation: "PIT", selected: false, dimmed: false, size: 48)
     }
     .padding()
 }

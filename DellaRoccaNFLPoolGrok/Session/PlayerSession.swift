@@ -230,8 +230,11 @@ struct ClaimedEntry: Identifiable, Hashable, Sendable {
             }
             return "Can buy back"
         case .eliminated:
-            if buybackDeclined, let eliminatedWeek {
-                return "Out · no buyback after week \(eliminatedWeek)"
+            // Name the week that ended the run and nothing more. The buyback
+            // cutoff is the same for everyone, and "no buyback after week 9"
+            // read as if week 9 were it.
+            if let eliminatedWeek {
+                return "Out · lost week \(eliminatedWeek)"
             }
             return "Out"
         }
@@ -254,6 +257,13 @@ final class PlayerSession {
         didSet { recomputeStandingBuckets() }
     }
     var standingsLoaded = false
+    /// First delivery from the owned-entries listener, success or failure.
+    /// Until then `entries` is empty for everyone, a returning player included,
+    /// so an empty-state view gates on this and not on the count.
+    var entriesLoaded = false
+    /// First delivery from the games listener. Tells "the schedule is not here
+    /// yet" apart from "no game is left to pick".
+    var gamesLoaded = false
     var teamLogos: [String: URL] = [:]
     var privatePicksReady = false
     var commissioners: [CommissionerAccess] = []
@@ -328,6 +338,8 @@ final class PlayerSession {
         var privatePicks: [String: [Int: String]] = [:]
         var standings: [ClaimedEntry] = []
         var standingsLoaded = false
+        var entriesLoaded = true
+        var gamesLoaded = true
         var isAdmin = false
         var privatePicksReady = false
         var teamLogos: [String: URL] = [:]
@@ -346,6 +358,8 @@ final class PlayerSession {
         privatePicks = sample.privatePicks
         standings = sample.standings
         standingsLoaded = sample.standingsLoaded
+        entriesLoaded = sample.entriesLoaded
+        gamesLoaded = sample.gamesLoaded
         isAdmin = sample.isAdmin
         privatePicksReady = sample.privatePicksReady
         teamLogos = sample.teamLogos
@@ -578,6 +592,13 @@ final class PlayerSession {
     }
 
     private func signIn(with authorization: ASAuthorization) async {
+        if isPreview {
+            // Previews never configure Firebase; take the same local path as
+            // every other sign-in rather than reaching Auth.auth().
+            let credential = authorization.credential as? ASAuthorizationAppleIDCredential
+            previewSignIn(as: credential?.email ?? "Apple ID")
+            return
+        }
         guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
               let tokenData = credential.identityToken,
               let token = String(data: tokenData, encoding: .utf8),
@@ -783,6 +804,8 @@ final class PlayerSession {
             privatePicks = [:]
             standings = []
             standingsLoaded = false
+            entriesLoaded = false
+            gamesLoaded = false
             teamLogos = [:]
             privatePicksReady = false
             isAdmin = false
@@ -809,6 +832,9 @@ final class PlayerSession {
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
+                    // Even a failed first delivery ends the loading state; the
+                    // error is on the banner, and the tab must not keep spinning.
+                    self.entriesLoaded = true
                     guard let parsed else { return }
                     self.entries = parsed.sorted {
                         $0.label.localizedStandardCompare($1.label) == .orderedAscending
@@ -824,6 +850,7 @@ final class PlayerSession {
                 let failure = error?.localizedDescription
                 Task { @MainActor in
                     if let failure { self.errorMessage = failure }
+                    self.gamesLoaded = true
                     guard let parsed else { return }
                     self.games = parsed
                 }

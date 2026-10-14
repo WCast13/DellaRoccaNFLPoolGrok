@@ -10,7 +10,36 @@ enum PreviewData {
         PlayerSession(preview: PlayerSession.PreviewSample(
             userID: "preview-user",
             accountLabel: "wcastellano13@gmail.com",
-            standingsLoaded: false
+            standingsLoaded: false,
+            entriesLoaded: false,
+            gamesLoaded: false
+        ))
+    }
+
+    /// Signed in with entries, but the schedule has not been delivered yet.
+    static func scheduleLoading() -> PlayerSession {
+        PlayerSession(preview: PlayerSession.PreviewSample(
+            userID: "preview-user",
+            accountLabel: "wcastellano13@gmail.com",
+            entries: [will, casa],
+            standings: standings,
+            standingsLoaded: true,
+            gamesLoaded: false,
+            teamLogos: logos
+        ))
+    }
+
+    /// Every game of the season has kicked off, so there is no open week.
+    static func seasonOver() -> PlayerSession {
+        PlayerSession(preview: PlayerSession.PreviewSample(
+            userID: "preview-user",
+            accountLabel: "wcastellano13@gmail.com",
+            entries: [will, casa],
+            games: games.filter { $0.hasKickedOff },
+            privatePicks: privatePicks,
+            standings: standings,
+            standingsLoaded: true,
+            teamLogos: logos
         ))
     }
 

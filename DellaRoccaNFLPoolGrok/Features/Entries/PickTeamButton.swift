@@ -14,6 +14,8 @@ struct PickTeamButton: View {
     /// that team, which stays selectable as the existing pick.
     var lockedBy: String? = nil
     /// Show the unavailable reason (e.g. "Used in week 2") beneath the chip.
+    /// The line is reserved even when the team is available, so the two chips
+    /// in a game row stay level with each other.
     var showsReason: Bool = false
 
     private var allowed: Bool {
@@ -57,8 +59,8 @@ struct PickTeamButton: View {
             .accessibilityLabel(
                 EntryPickRules.teamAccessibility(abbreviation: abbreviation, allowed: allowed, reason: reason)
             )
-            if showsReason, let reason {
-                Text(reason)
+            if showsReason {
+                Text(reason ?? " ")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

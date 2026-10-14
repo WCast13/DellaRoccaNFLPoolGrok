@@ -10,13 +10,13 @@ Edit this file as the list changes. Checked items are in the app. Unchecked item
 - [x] 6. Keep "Claim another entry" after the first PIN.
 - [x] 7. Show every entry on My Entries with this week's team, or "No pick."
 - [x] 8. Make the saved pick obvious. The button stays on screen and reads "Jets saved" or "Save Jets." The confirmation sits at the top.
-- [x] 9. Say why a team cannot be picked: "Used in week 2" or "Locked."
+- [x] 9. Say why a team cannot be picked: "Used in week 2" or "Locked." The reason sits under the dimmed chip in the player's pick row.
 - [ ] 10. Show the score once a game starts, and label the spread as a spread.
 - [ ] 11. Say that this week's result is still open before offering next week's games.
 - [x] 12. Tell a knocked-out player which week they lost and give them the buyback decision themselves: buy back in or stay eliminated, changeable until the deadline, confirmed by making the next week's pick. The fee is still settled outside the app and shows as owed.
 - [x] 13. Turn the commissioner home into three queues with counts: no pick yet, waiting on a buyback, and no login. Name search still finds any entry. (Replaced by the week grid in item 17; the counts live in the week summary now.)
 - [ ] 14. Ask before changing a pick whose game has already kicked off. (The close-week preview half of this item is gone — weeks grade automatically now. The commissioner pick popup had this confirmation briefly and dropped it: a tap saves at once, after kickoff too.)
-- [x] 15. Put the team name on the pick button. Show the logo stored for that team.
+- [x] 15. Show the logo stored for that team on the pick button, with the abbreviation in the team's colors whenever there is no logo to show.
 - [x] 16. Show who has commissioner access, and let a commissioner remove one. Removal revokes the claim on the server; it takes effect on that person's next sign-in refresh, within an hour.
 - [x] 17. Commissioner tab as a week board: a header to step or jump weeks, the week's games as a slate, and every entry's picks in one aligned grid. Grading runs on its own each hour; "Sync scores and grade now" runs it on demand.
 - [x] 18. Summarize the selected week above the grid: entries active, won, lost, waiting, and with no pick, plus how many entries picked each team, ringed green or red once that game is final.
