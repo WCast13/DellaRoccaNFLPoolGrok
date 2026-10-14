@@ -53,7 +53,8 @@ struct GamePickRow: View {
             usedTeams: session.usedTeams(for: entry),
             logoURL: session.teamLogos[abbreviation],
             selectedTeam: $selectedTeam,
-            lockedBy: lockedBy
+            lockedBy: lockedBy,
+            showsReason: true
         )
     }
 

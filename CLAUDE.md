@@ -53,6 +53,8 @@ Console prerequisites, done once per project: Email/Password and Phone are enabl
 
 Views receive it as **optional** — `var session: PlayerSession?` — because `ContentView` constructs it in `.task`, after first render. Every view must handle `nil` as "not ready yet". Follow this pattern in new views rather than forcing unwraps.
 
+The first render after sign-in has `isSignedIn` true and every array empty. `entriesLoaded`, `gamesLoaded`, and `standingsLoaded` flip on the first delivery of their listener, so an empty-state view (the claim form, "no games left", the pool board) gates on the flag, never on the array being empty.
+
 ### Reads and writes go different ways
 
 This asymmetry is the most important thing to understand:
